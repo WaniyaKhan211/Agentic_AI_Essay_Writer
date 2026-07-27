@@ -9,7 +9,7 @@ HF_API_KEY=os.getenv("HF_API_KEY")
 EXA_API_KEY=os.getenv("EXA_API_KEY")
 
 #Models
-GROQ_MODEL= "openai-gpt-oss-120"
+GROQ_MODEL= "openai/gpt-oss-120b"
 HF_MODEL= "black-forest-labs/FLUX.1-Krea-dev"
 
 TEMPERATURE =0.7
