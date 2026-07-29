@@ -39,7 +39,10 @@ function MessageBubble({ sender, text, images = [] }) {
       <div className="message-content">
 
         <div className="bubble">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            breaks={true}
+          >
             {text}
           </ReactMarkdown>
 

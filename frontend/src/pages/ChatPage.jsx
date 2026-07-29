@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { generateEssayStream } from "../services/api";
 
 import Header from "../components/Header";
 import Sidebar from "../components/Sidebar";
@@ -28,22 +29,27 @@ function ChatPage() {
   ]);
 
   const [currentConversation, setCurrentConversation] = useState(1);
-  const [isTyping, setIsTyping] = useState(false);
+
+  // Stores which conversation is currently waiting for the first AI chunk
+  const [typingConversationId, setTypingConversationId] = useState(null);
 
   const activeConversation = conversations.find(
     (chat) => chat.id === currentConversation
   );
 
-  const sendMessage = (text) => {
+  const sendMessage = async (text) => {
+    // Lock the conversation so switching chats won't affect streaming
+    const conversationId = currentConversation;
+
     const userMessage = {
       sender: "user",
-      text: text,
+      text,
     };
 
     // Add user message
     setConversations((prev) =>
       prev.map((chat) => {
-        if (chat.id !== currentConversation) return chat;
+        if (chat.id !== conversationId) return chat;
 
         return {
           ...chat,
@@ -58,67 +64,117 @@ function ChatPage() {
       })
     );
 
-    setIsTyping(true);
-    // Fake AI response
-    setTimeout(() => {
-      setIsTyping(false);
-      const aiMessage = {
-  sender: "ai",
-  text: `# Essay
+    // Show typing indicator
+    setTypingConversationId(conversationId);
 
-This is a sample essay generated for:
+    const aiMessageId = Date.now();
+    let firstChunk = true;
 
-**${text}**
+    try {
+      await generateEssayStream(text, (chunk) => {
+        // First chunk -> create AI message
+        if (firstChunk) {
+          firstChunk = false;
 
-Later this text will come from your FastAPI backend.`,
+          // Hide typing indicator
+          setTypingConversationId(null);
 
-  images: [
-    "https://picsum.photos/400?1",
-    "https://picsum.photos/400?2",
-    "https://picsum.photos/400?3",
-    "https://picsum.photos/400?4",
-  ],
-};
+          setConversations((prev) =>
+            prev.map((chat) => {
+              if (chat.id !== conversationId) return chat;
+
+              return {
+                ...chat,
+                messages: [
+                  ...chat.messages,
+                  {
+                    id: aiMessageId,
+                    sender: "ai",
+                    text: chunk,
+                    images: [],
+                  },
+                ],
+              };
+            })
+          );
+
+          return;
+        }
+
+        // Remaining chunks
+        setConversations((prev) =>
+          prev.map((chat) => {
+            if (chat.id !== conversationId) return chat;
+
+            return {
+              ...chat,
+              messages: chat.messages.map((msg) => {
+                if (msg.id === aiMessageId) {
+                  return {
+                    ...msg,
+                    text: msg.text + chunk,
+                  };
+                }
+
+                return msg;
+              }),
+            };
+          })
+        );
+      });
+
+      // Safety
+      setTypingConversationId(null);
+    } catch (error) {
+      setTypingConversationId(null);
 
       setConversations((prev) =>
         prev.map((chat) => {
-          if (chat.id !== currentConversation) return chat;
+          if (chat.id !== conversationId) return chat;
 
           return {
             ...chat,
-            messages: [...chat.messages, aiMessage],
+            messages: [
+              ...chat.messages,
+              {
+                sender: "ai",
+                text: "Unable to connect to backend.",
+                images: [],
+              },
+            ],
           };
         })
       );
-    }, 1000);
+
+      console.error(error);
+    }
   };
 
   const createNewChat = () => {
-  const newConversation = {
-    id: Date.now(),
-    title: "New Chat",
-    messages: [
-      {
-        sender: "ai",
-        text: "Hello! Give me a topic and I will help you write an essay.",
-      },
-    ],
+    const newConversation = {
+      id: Date.now(),
+      title: "New Chat",
+      messages: [
+        {
+          sender: "ai",
+          text: "Hello! Give me a topic and I will help you write an essay.",
+        },
+      ],
+    };
+
+    setConversations((prev) => [...prev, newConversation]);
+    setCurrentConversation(newConversation.id);
   };
-
-  setConversations((prev) => [...prev, newConversation]);
-
-  setCurrentConversation(newConversation.id);
-};
 
   return (
     <div className="app-container">
       <Sidebar
-  isOpen={isSidebarOpen}
-  conversations={conversations}
-  currentConversation={currentConversation}
-  setCurrentConversation={setCurrentConversation}
-  createNewChat={createNewChat}
-/>
+        isOpen={isSidebarOpen}
+        conversations={conversations}
+        currentConversation={currentConversation}
+        setCurrentConversation={setCurrentConversation}
+        createNewChat={createNewChat}
+      />
 
       <div className="main-content">
         <Header
@@ -128,9 +184,9 @@ Later this text will come from your FastAPI backend.`,
 
         <div className="chat-container">
           <ChatWindow
-  messages={activeConversation.messages}
-  isTyping={isTyping}
-/>
+            messages={activeConversation.messages}
+            isTyping={typingConversationId === currentConversation}
+          />
         </div>
 
         <ChatInput sendMessage={sendMessage} />

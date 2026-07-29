@@ -51,12 +51,36 @@ Use the following feedback to rewrite and improve the essay:
     prompt += """
 
 Requirements:
-- Write a complete essay.
-- Include an introduction, body, and conclusion.
-- Use formal language.
+
+- Write a complete, well-structured essay.
+- The essay must stay focused on the user's exact topic.
+- Include an Introduction, Body, and Conclusion.
+- Use formal, academic language.
 - Use the web research only as supporting information.
 - Fix all issues mentioned in the feedback.
 - Return only the final essay.
+
+Formatting Requirements:
+
+- Format the entire essay in valid Markdown.
+- The essay title must use:
+  # Essay Title
+
+- The main sections must use:
+  ## Introduction
+  ## Body
+  ## Conclusion
+
+- Subsections inside the body must use:
+  ### Heading
+
+- Do NOT write:
+  *Introduction*
+  *Body*
+  *Conclusion*
+
+- Do NOT use italic text for section titles.
+- Do NOT add any text before or after the essay.
 """
 
     response = llm.invoke(prompt)
