@@ -8,34 +8,42 @@ from nodes.graph import (
     judge_node
 )
 
+from nodes.validator import validator_node
+
+
+def check_request(state):
+
+    if state["is_valid"]:
+        return "essay"
+
+    return "invalid"
 
 
 def check_score(state):
 
-    if state["passed"]:
-        return "end"
-
-    if state["attempts"] >= 3:
+    if state["passed"] or state["attempts"] >= 3:
         return "end"
 
     return "retry"
-
 
 
 graph = StateGraph(EssayState)
 
 
 graph.add_node(
+    "validator",
+    validator_node
+)
+
+graph.add_node(
     "research",
     research_node
 )
-
 
 graph.add_node(
     "writer",
     writer_node
 )
-
 
 graph.add_node(
     "judge",
@@ -43,9 +51,18 @@ graph.add_node(
 )
 
 
-
 graph.set_entry_point(
-    "research"
+    "validator"
+)
+
+
+graph.add_conditional_edges(
+    "validator",
+    check_request,
+    {
+        "essay": "research",
+        "invalid": END
+    }
 )
 
 
@@ -69,5 +86,6 @@ graph.add_conditional_edges(
         "end": END
     }
 )
+
 
 essay_graph = graph.compile()

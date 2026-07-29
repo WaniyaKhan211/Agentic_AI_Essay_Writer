@@ -12,3 +12,5 @@ class EssayState(TypedDict):
     feedback: List[str]
     passed: bool
     attempts: int
+    is_valid: bool
+    response: str

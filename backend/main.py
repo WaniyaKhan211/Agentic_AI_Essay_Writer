@@ -22,11 +22,17 @@ while True:
             "feedback": [],
             "passed": False,
             "attempts": 0,
+            "is_valid": True,
+            "response": "",
         }
     )
 
-    print("\n========== FINAL ESSAY ==========\n")
-    print(result["best_essay"])
+    if not result["is_valid"]:
+        print("\n========== RESPONSE ==========\n")
+        print(result["response"])
+    else:
+        print("\n========== FINAL ESSAY ==========\n")
+        print(result["best_essay"])
 
-    # print("\n========== BEST SCORE ==========")
-    # print(result["best_score"])
+        # print("\n========== BEST SCORE ==========")
+        # print(result["best_score"])
