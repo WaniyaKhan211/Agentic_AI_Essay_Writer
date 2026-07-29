@@ -25,6 +25,7 @@ A professional AI-powered essay writing assistant built with **React**, **FastAP
 * Automatic retry until the quality threshold is reached
 * Best essay selection
 * Modular prompts, schemas, and configuration
+* Input validation guardrail that only accepts essay-related requests.
 
 ### Upcoming Features
 
@@ -54,6 +55,38 @@ A professional AI-powered essay writing assistant built with **React**, **FastAP
 * Groq
 * Exa Search API
 * Pydantic
+
+### Project Workflow
+
+    User Idea
+
+        ↓
+
+    Input Validation (Guardrail)
+
+        ↓
+
+    Web Research
+
+        ↓
+
+    Essay Generation
+
+        ↓
+
+    AI Evaluation
+
+        ↓
+
+    Quality Check
+
+        ↓
+
+    Retry (if required)
+
+        ↓
+
+    Final Essay
 
 ## Project Structure
 
