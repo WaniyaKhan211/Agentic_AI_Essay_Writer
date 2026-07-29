@@ -6,87 +6,99 @@ A professional AI-powered essay writing assistant built with **React**, **FastAP
 
 ### Frontend
 
-* Professional chatbot interface built with React + Vite
-* Collapsible sidebar with chat history
-* Multiple conversation support
-* User and AI message bubbles with avatars
-* Markdown rendering for formatted essays
-* Auto-growing input area
-* AI typing indicator
-* Copy, Edit, Regenerate, Like, and Dislike action buttons
-* Image gallery UI for AI-generated images
+- Professional chatbot interface built with React + Vite
+- Collapsible sidebar with chat history
+- Multiple conversation support
+- User and AI message bubbles with avatars
+- Markdown rendering for formatted essays
+- Auto-growing input area
+- AI typing indicator
+- Real-time streamed essay responses (SSE)
+- Copy, Edit, Regenerate, Like, and Dislike action buttons
+- Image gallery UI for AI-generated images
 
 ### Backend
 
-* LangGraph workflow
-* Exa web search integration
-* Essay generation with Groq LLM
-* Essay evaluation using structured Pydantic output
-* Automatic retry until the quality threshold is reached
-* Best essay selection
-* Modular prompts, schemas, and configuration
-* Input validation guardrail that only accepts essay-related requests.
+- FastAPI REST API
+- Server-Sent Events (SSE) streaming
+- LangGraph workflow
+- Exa web search integration
+- Essay generation with Groq LLM
+- Essay evaluation using structured Pydantic output
+- Automatic retry until the quality threshold is reached
+- Best essay selection after evaluation
+- Input validation guardrail that only accepts essay-related requests
+- Modular prompts, schemas, tools, and configuration
 
-### Upcoming Features
+## Upcoming Features
 
-* FastAPI integration
-* Real-time streaming responses
-* AI image generation
-* Conversation memory
-* Long-term user preferences
-* Summarisation middleware
-* Persistent chat storage
+- AI image generation
+- Conversation memory
+- Long-term user preferences
+- Summarisation middleware
+- Persistent chat storage
+- Multi-session conversation history
 
-## Tech Stack
+---
 
-### Frontend
+# Tech Stack
 
-* React
-* Vite
-* React Markdown
-* React Icons
-* CSS
+## Frontend
 
-### Backend
+- React
+- Vite
+- React Markdown
+- React Icons
+- CSS
 
-* FastAPI
-* LangGraph
-* LangChain
-* Groq
-* Exa Search API
-* Pydantic
+## Backend
 
-### Project Workflow
+- FastAPI
+- LangGraph
+- LangChain
+- Groq
+- Exa Search API
+- Pydantic
+- Server-Sent Events (SSE)
 
-    User Idea
+---
 
-        ↓
+# Project Workflow
 
-    Input Validation (Guardrail)
-
-        ↓
-
-    Web Research
-
-        ↓
-
-    Essay Generation
-
-        ↓
-
-    AI Evaluation
-
-        ↓
-
-    Quality Check
-
-        ↓
-
-    Retry (if required)
-
-        ↓
-
-    Final Essay
+```text
+User Idea
+    │
+    ▼
+Input Validation (Guardrail)
+    │
+    ▼
+Web Research
+    │
+    ▼
+Essay Generation
+    │
+    ▼
+AI Evaluation
+    │
+    ▼
+Quality Check
+    │
+    ├── Score ≥ Threshold → Final Essay
+    │
+    └── Score < Threshold
+            │
+            ▼
+      Retry (Maximum 3 Attempts)
+            │
+            ▼
+Highest Scoring Essay Selected
+            │
+            ▼
+Real-Time SSE Streaming
+            │
+            ▼
+React Chat Interface
+```
 
 ## Project Structure
 
@@ -94,10 +106,11 @@ A professional AI-powered essay writing assistant built with **React**, **FastAP
 Agentic_AI_Essay_Writer/
 │
 ├── backend/
-│   ├── graph.py
+│   ├── app.py
+│   ├── langraph_flow.py
 │   ├── config.py
-│   ├── prompts/
 │   ├── nodes/
+│   ├── prompts/
 │   ├── schemas/
 │   ├── tools/
 │   └── ...
@@ -108,26 +121,35 @@ Agentic_AI_Essay_Writer/
     │   ├── pages/
     │   ├── services/
     │   ├── styles/
-    │   └── assets/
+    │   ├── assets/
+    │   └── ...
     └── ...
 ```
 
 ## Current Progress
 
-* ✅ AI essay generation workflow completed
-* ✅ Essay evaluation and retry pipeline completed
-* ✅ Professional React chatbot UI completed
-* 🔄 FastAPI integration in progress
-* ⏳ Streaming responses
-* ⏳ AI image generation
-* ⏳ Memory and user preferences
+- ✅ LangGraph essay generation workflow completed
+- ✅ Essay evaluation and retry pipeline completed
+- ✅ Input validation guardrail implemented
+- ✅ Exa web research integration completed
+- ✅ FastAPI backend completed
+- ✅ React chatbot UI completed
+- ✅ Frontend and backend integration completed
+- ✅ Real-time SSE streaming completed
+- ⏳ AI image generation
+- ⏳ Conversation memory
+- ⏳ Long-term user preferences
+- ⏳ Summarisation middleware
+- ⏳ Persistent chat storage
 
 ## Future Goals
 
-* Real-time streamed responses
-* AI-generated images
-* Persistent conversation history
-* Long-term memory and user preferences
+- AI-generated images
+- Long-term conversation memory
+- User preference learning
+- Summarisation middleware
+- Persistent chat history
+- Production deployment
 
 ## Author
 
