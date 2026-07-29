@@ -70,6 +70,4 @@ graph.add_conditional_edges(
     }
 )
 
-
-
 essay_graph = graph.compile()

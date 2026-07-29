@@ -1,5 +1,3 @@
-import json
-
 from langchain_groq import ChatGroq
 
 from config import (
@@ -30,14 +28,9 @@ Essay:
 
 Return only JSON.
 """
+    structured_llm = llm.with_structured_output(JudgeResult, method="json_mode")
+    result = structured_llm.invoke(prompt)
 
-    response = llm.invoke(prompt)
-
-    json_result = json.loads(response.content)
-
-    result = JudgeResult(**json_result)
-
-    print("\n========== PYDANTIC OUTPUT ==========")
-    print(result)
+    #print(result)
 
     return result

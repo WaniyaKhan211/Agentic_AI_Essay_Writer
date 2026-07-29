@@ -1,0 +1,39 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --sidebar: #171717;
+  --sidebar-hover: #2a2a2a;
+
+  --background: #f7f7f8;
+
+  --user: #10a37f;
+
+  --assistant: white;
+
+  --border: #e5e5e5;
+
+  --primary: #10a37f;
+
+  --text: #202123;
+
+  --secondary-text: #6b7280;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  background-color: #f3f4f6;
+}
+
+button {
+  cursor: pointer;
+}
+
+input {
+  outline: none;
+}
