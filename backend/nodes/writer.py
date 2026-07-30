@@ -1,5 +1,6 @@
 from langchain_groq import ChatGroq
-
+from utils.markdown_formatter import format_markdown
+from schemas.essay_schema import EssayOutput
 from config import (
     GROQ_API_KEY,
     GROQ_MODEL,
@@ -13,10 +14,12 @@ llm = ChatGroq(
     temperature=TEMPERATURE,
 )
 
+
 def generate_essay(
     user_idea: str,
     research: str = "",
-    feedback: str = ""
+    references=None,
+    feedback: str = "",
 ):
     """
     Generate or regenerate an essay.
@@ -48,41 +51,195 @@ Use the following feedback to rewrite and improve the essay:
 {feedback}
 """
 
-    prompt += """
+    prompt +="""
+You are a professional essay writer.
 
-Requirements:
+Return the response using the provided structured schema.
 
-- Write a complete, well-structured essay.
-- The essay must stay focused on the user's exact topic.
-- Include an Introduction, Body, and Conclusion.
-- Use formal, academic language.
-- Use the web research only as supporting information.
-- Fix all issues mentioned in the feedback.
-- Return only the final essay.
+Field Requirements
 
-Formatting Requirements:
+title
+- Write a concise and engaging essay title.
 
-- Format the entire essay in valid Markdown.
-- The essay title must use:
-  # Essay Title
+introduction
+- Write a clear introduction to the topic.
 
-- The main sections must use:
-  ## Introduction
-  ## Body
-  ## Conclusion
+sections
+- Divide the essay into logical sections.
+- Each section must contain:
+    - heading
+    - body
+- Use complete paragraphs.
+- Use bullet points whenever they improve readability.
+- Use numbered lists for sequential information.
 
-- Subsections inside the body must use:
-  ### Heading
+Body Formatting Rules
 
-- Do NOT write:
-  *Introduction*
-  *Body*
-  *Conclusion*
+The "body" field of every section MUST contain valid GitHub Markdown.
 
-- Do NOT use italic text for section titles.
-- Do NOT add any text before or after the essay.
+Use Markdown to improve readability.
+
+Formatting requirements:
+
+- Bold (**text**) important concepts, scientific terms, definitions, molecule names, technologies, keywords, numerical values, and important results.
+
+- Italicize (*text*) first definitions, foreign words, and emphasis when appropriate.
+
+- Use bullet lists whenever multiple points are explained.
+
+- Use numbered lists for ordered information.
+
+- Use inline LaTeX using $...$ for variables and symbols.
+
+Example:
+The molecule **ATP** stores approximately **30.5 kJ·mol⁻¹** of energy.
+
+The variable $x$ represents the input feature.
+
+Do not return plain text when Markdown formatting improves readability.
+
+tables
+
+If a comparison would improve the essay, create one or more tables.
+
+Each table must contain:
+
+title
+
+headers
+A list of column names.
+
+rows
+A list of rows.
+Each row is a list of strings.
+
+Example
+
+title:
+Comparison
+
+headers:
+[
+"Feature",
+"School",
+"University"
+]
+
+rows:
+[
+["Schedule","Fixed","Flexible"],
+["Cost","Low","High"]
+]
+
+Do NOT return markdown inside the table.
+Return structured data only.
+
+formulas
+Only generate formulas when the topic genuinely requires mathematical,
+scientific, engineering, economic, statistical, financial,
+physics, chemistry, biology, machine learning,
+computer science, or quantitative reasoning.
+
+Examples where formulas SHOULD be generated:
+- Physics
+- Mathematics
+- Chemistry
+- Biology (when biochemical equations are relevant)
+- Machine Learning
+- Statistics
+- Data Science
+- Engineering
+- Economics (economic models)
+- Finance (compound interest, NPV, etc.)
+
+Examples where formulas SHOULD NOT be generated:
+- History
+- Politics
+- Elections
+- Literature
+- Geography
+- Philosophy
+- Law
+- Psychology (unless discussing statistical models)
+- Sociology
+- Business essays without mathematical analysis
+- General education topics
+
+If no meaningful formula naturally belongs in the essay,
+return an empty list.
+
+Return:
+
+latex
+
+explanation
+
+Example:
+
+{
+    "latex":"E = mc^2",
+    "explanation":"Mass–energy equivalence."
+}
+Mathematics Formatting Rules
+
+Use Markdown LaTeX only.
+
+Inline equations must use:
+
+$x$
+
+Display equations must use:
+
+$$
+equation
+$$
+
+Do NOT use:
+
+\(...\)
+
+or
+
+\[...\]
+
+conclusion
+- Summarise the essay.
+Formatting Intelligence
+
+Decide automatically which elements are appropriate for the topic.
+
+- Do NOT create tables unless they improve understanding.
+- Do NOT create formulas unless they naturally belong to the subject.
+- Do NOT force technical formatting into non-technical essays.
+- Use bullets only when they improve readability.
+- Prefer normal paragraphs for narrative topics.
+
+General Rules
+
+- Keep the essay well structured.
+- Use formal academic language.
+- Use research only when relevant.
+- Never invent facts or statistics.
+- Every statistic must come from the supplied research.
+- If a comparison exists, at least one table is REQUIRED.
+- Never leave a comparison section without a table.
 """
+    print("\n========== REFERENCES ==========")
+    print(references)
+    print("===============================\n")
 
-    response = llm.invoke(prompt)
 
-    return response.content
+    structured_llm = llm.with_structured_output(EssayOutput)
+
+    essay_data = structured_llm.invoke(prompt)
+
+    essay = format_markdown(essay_data)
+    # Append references at the end
+    if references:
+        essay += "\n\n"
+        essay += "## References\n"
+
+        for ref in references:
+            essay += f"- [{ref['title']}]({ref['url']})\n"
+
+    return essay

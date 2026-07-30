@@ -40,11 +40,11 @@
 }
 
 .message.ai .avatar{
-    color:#10a37f;
+    color:#a67cc2;
 }
 
 .message.user .avatar{
-    color:#2563eb;
+    color:#a67cc2;
 }
 
 .message-content{
@@ -56,15 +56,18 @@
     background:white;
     padding:16px;
     border-radius:14px;
-    max-width:700px;
+    max-width:900px;
     box-shadow:0 2px 8px rgba(0,0,0,.05);
 
-    white-space:pre-wrap;
+    white-space:normal;
     overflow-wrap:anywhere;
 }
 
+.message.ai .bubble{
+    width: 90%;
+}
 .message.user .bubble{
-    background:#10a37f;
+    background:#cab1db;
     color:white;
 }
 
@@ -126,7 +129,7 @@
 }
 
 .bubble blockquote{
-    border-left:4px solid #10a37f;
+    border-left:4px solid #cab1db;
     padding-left:14px;
     color:#666;
     margin:14px 0;

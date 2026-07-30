@@ -8,15 +8,12 @@ def research_node(state):
 
     print("Topic:", state["idea"])
 
-    research = decide_and_research(
-        state["idea"]
-    )
+    data = decide_and_research(state["idea"])
 
     return {
-        "research": research
+        "research": data["research"],
+        "references": data["references"]
     }
-
-
 
 def writer_node(state):
 
@@ -26,6 +23,7 @@ def writer_node(state):
     essay = generate_essay(
         user_idea=state["idea"],
         research=state["research"],
+        references=state["references"],
         feedback="\n".join(state["feedback"])
     )
 

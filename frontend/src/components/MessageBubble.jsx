@@ -9,9 +9,12 @@ import {
   FiThumbsDown,
   FiEdit2,
 } from "react-icons/fi";
-
+import "../styles/markdown.css";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import rehypeHighlight from "rehype-highlight";
 
 function MessageBubble({ sender, text, images = [] }) {
   const [copied, setCopied] = useState(false);
@@ -39,17 +42,19 @@ function MessageBubble({ sender, text, images = [] }) {
       <div className="message-content">
 
         <div className="bubble">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            breaks={true}
-          >
-            {text}
-          </ReactMarkdown>
+  <div className="markdown-body">
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm, remarkMath]}
+      rehypePlugins={[rehypeKatex, rehypeHighlight]}
+    >
+      {text}
+    </ReactMarkdown>
+  </div>
 
-          {images.length > 0 && (
-  <ImageGallery images={images} />
-)}
-        </div>
+  {images.length > 0 && (
+    <ImageGallery images={images} />
+  )}
+</div>
 
         <div className="message-actions">
 

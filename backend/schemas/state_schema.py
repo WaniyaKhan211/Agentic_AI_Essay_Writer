@@ -5,6 +5,7 @@ class EssayState(TypedDict):
 
     idea: str
     research: str
+    references: List[dict]
     essay: str
     score: int
     best_essay: str

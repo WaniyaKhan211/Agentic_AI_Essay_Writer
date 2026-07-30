@@ -7,12 +7,11 @@ exa = Exa(api_key=EXA_API_KEY)
 
 def search_web(query: str):
     """
-    Search the web and return relevant information.
+    Search the web and return Exa results.
     """
 
-    results = exa.search(
+    return exa.search(
         query,
-        num_results=5,
-    )
+        num_results=3,
 
-    return results
+    )

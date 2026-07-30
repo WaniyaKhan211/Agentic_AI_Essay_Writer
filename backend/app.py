@@ -41,6 +41,7 @@ async def generate_essay(request: EssayRequest):
         {
             "idea": request.idea,
             "research": "",
+            "references": [],
             "essay": "",
             "score": 0,
             "best_essay": "",

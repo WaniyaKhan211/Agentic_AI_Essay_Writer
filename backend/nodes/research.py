@@ -57,22 +57,50 @@ Return only the search query text.
     raw_results = search_web(query)
 
 
-    return format_search_results(raw_results)
+    data =  format_search_results(raw_results)
+    return data
 
 
-
-def format_search_results(results) -> str:
+def format_search_results(results):
     """
-    Extract useful content from Exa results.
+    Returns:
+
+    research_text
+    references
     """
 
     try:
 
-        return "\n\n".join(
-            f"Source: {r.url}\n{(r.text or '')[:500]}"
-            for r in results.results
-        )
+        research = []
+        references = []
 
-    except AttributeError:
+        for r in results.results:
 
-        return str(results)
+            research.append(
+                f"""
+Source:
+{r.url}
+
+Content:
+{(r.text or "")[:500]}
+"""
+            )
+
+            references.append(
+                {
+                    "title": r.title if hasattr(r, "title") else r.url,
+                    "url": r.url,
+                }
+            )
+
+        return {
+            "research": "\n\n".join(research),
+            "references": references,
+        }
+
+    except Exception:
+
+        return {
+            "research": str(results),
+            "references": [],
+        }
