@@ -8,6 +8,7 @@ import {
   FiThumbsUp,
   FiThumbsDown,
   FiEdit2,
+  FiExternalLink,
 } from "react-icons/fi";
 import "../styles/markdown.css";
 import ReactMarkdown from "react-markdown";
@@ -29,6 +30,37 @@ function MessageBubble({ sender, text, images = [] }) {
     }, 2000);
   };
 
+  const getFavicon = (url) => {
+  try {
+    return `https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(
+      new URL(url).origin
+    )}`;
+  } catch {
+    return "";
+  }
+};
+
+const LinkRenderer = ({ children, ...props }) => {
+  const href = props.href;
+
+  return (
+    <a
+      {...props}
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={href}
+      className="favicon-link"
+    >
+      <img
+        src={getFavicon(href)}
+        alt=""
+        className="favicon"
+      />
+    </a>
+  );
+};
+
   return (
     <div className={`message ${sender}`}>
       <div className="avatar">
@@ -44,11 +76,14 @@ function MessageBubble({ sender, text, images = [] }) {
         <div className="bubble">
   <div className="markdown-body">
     <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMath]}
-      rehypePlugins={[rehypeKatex, rehypeHighlight]}
-    >
-      {text}
-    </ReactMarkdown>
+  remarkPlugins={[remarkGfm, remarkMath]}
+  rehypePlugins={[rehypeKatex, rehypeHighlight]}
+  components={{
+    a: LinkRenderer,
+  }}
+>
+  {text}
+</ReactMarkdown>
   </div>
 
   {images.length > 0 && (

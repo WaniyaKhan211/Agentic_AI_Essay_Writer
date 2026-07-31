@@ -171,7 +171,7 @@
    Images
    =========================== */
 
-.markdown-body img {
+.markdown-body img:not(.favicon) {
 
     width: 100%;
 
@@ -229,4 +229,28 @@
 .markdown-body em {
 
     font-style: italic;
+}
+
+.favicon-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    margin-right: 6px;
+}
+
+.favicon {
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: transform .15s;
+    display: block;
+}
+
+.favicon:hover {
+    transform: scale(1.15);
+}
+.favicon-link:hover {
+    text-decoration: none;
 }
