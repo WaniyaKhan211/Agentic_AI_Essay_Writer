@@ -231,7 +231,22 @@ General Rules
 
     structured_llm = llm.with_structured_output(EssayOutput)
 
-    essay_data = structured_llm.invoke(prompt)
+    max_attempts = 3
+    last_error = None
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            essay_data = structured_llm.invoke(prompt)
+            break
+        except Exception as e:
+            last_error = e
+            print(f"[writer] attempt {attempt} failed: {e}")
+    else:
+        # All attempts failed — raise a clear error instead of a raw groq exception
+        raise RuntimeError(
+            "The essay model returned malformed output after "
+            f"{max_attempts} attempts. Please try again."
+        ) from last_error
 
     essay = format_markdown(essay_data)
     # Append references at the end
@@ -242,4 +257,13 @@ General Rules
         for ref in references:
             essay += f"- [{ref['title']}]({ref['url']})\n"
 
-    return essay
+    sections = [
+        {"heading": section.heading, "body": section.body}
+        for section in essay_data.sections
+    ]
+
+    return {
+        "markdown": essay,
+        "title": essay_data.title,
+        "sections": sections,
+    }

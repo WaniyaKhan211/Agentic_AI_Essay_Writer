@@ -10,7 +10,9 @@ EXA_API_KEY=os.getenv("EXA_API_KEY")
 
 #Models
 GROQ_MODEL= "openai/gpt-oss-120b"
-HF_MODEL= "black-forest-labs/FLUX.1-Krea-dev"
+#HF_MODEL= "black-forest-labs/FLUX.1-Krea-dev"
+#HF_MODEL= "black-forest-labs/FLUX.1-dev"
+HF_MODEL= "black-forest-labs/FLUX.1-schnell"
 
 TEMPERATURE =0.7
 MAX_TOKENS = 2000

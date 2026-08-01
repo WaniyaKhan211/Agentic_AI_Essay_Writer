@@ -11,7 +11,6 @@ A professional AI-powered essay writing assistant built with **React**, **FastAP
 - Multiple conversation support
 - User and AI message bubbles with avatars
 - Markdown rendering for formatted essays
-- Auto-growing input area
 - AI typing indicator
 - Real-time streamed essay responses (SSE)
 - Copy, Edit, Regenerate, Like, and Dislike action buttons
@@ -27,12 +26,18 @@ A professional AI-powered essay writing assistant built with **React**, **FastAP
 - Essay evaluation using structured Pydantic output
 - Automatic retry until the quality threshold is reached
 - Best essay selection after evaluation
-- Input validation guardrail that only accepts essay-related requests
+- Input validation guardrail (LLM-based) that only accepts essay-related requests
+- AI image generation
+- **Image safety guardrails**:
+  - Sensitive-topic detection (religious/cultural keywords) before generation
+  - Unsafe-word sanitization stripped from any text sent to the LLM/image model
+  - Automatic face-blurring (OpenCV Haar cascade) applied to generated images on sensitive topics, as a last line of defense
+  - Negative prompting to keep output photorealistic and free of text/watermarks/logos
+  - Retry logic for both the prompt-writing LLM call and the image generation call, with graceful fallback if either keeps failing
 - Modular prompts, schemas, tools, and configuration
 
 ## Upcoming Features
 
-- AI image generation
 - Conversation memory
 - Long-term user preferences
 - Summarisation middleware
@@ -56,7 +61,9 @@ A professional AI-powered essay writing assistant built with **React**, **FastAP
 - FastAPI
 - LangGraph
 - LangChain
-- Groq
+- Groq (essay writing, evaluation, validation, and image-prompt generation)
+- Hugging Face Inference Providers
+- OpenCV (face-blurring guardrail on generated images)
 - Exa Search API
 - Pydantic
 - Server-Sent Events (SSE)
@@ -83,21 +90,26 @@ AI Evaluation
     ▼
 Quality Check
     │
-    ├── Score ≥ Threshold → Final Essay
-    │
-    └── Score < Threshold
-            │
-            ▼
-      Retry (Maximum 3 Attempts)
-            │
-            ▼
-Highest Scoring Essay Selected
-            │
-            ▼
-Real-Time SSE Streaming
-            │
-            ▼
-React Chat Interface
+    ├── Score ≥ Threshold ─────────┐
+    │                              │
+    └── Score < Threshold          │
+            │                      │
+            ▼                      │
+      Retry (Maximum 3 Attempts)   │
+            │                      │
+            └──────────────────────┤
+                                    ▼
+                    Highest Scoring Essay Selected
+                                    │
+                                    ▼
+                          AI Image Generation
+                                    │
+                                    ▼
+                       Real-Time SSE Streaming
+                       (essay text, then images)
+                                    │
+                                    ▼
+                        React Chat Interface
 ```
 
 ## Project Structure
@@ -110,7 +122,15 @@ Agentic_AI_Essay_Writer/
 │   ├── langraph_flow.py
 │   ├── config.py
 │   ├── nodes/
+│   │   ├── graph.py           
+│   │   ├── validator.py      
+│   │   ├── research.py         
+│   │   ├── writer.py         
+│   │   ├── judge.py         
+│   │   └── image_generator.py  
 │   ├── prompts/
+│   │   ├── judge_prompt.py
+│   │   └── image_prompt.py    
 │   ├── schemas/
 │   ├── tools/
 │   └── ...
@@ -136,20 +156,11 @@ Agentic_AI_Essay_Writer/
 - ✅ React chatbot UI completed
 - ✅ Frontend and backend integration completed
 - ✅ Real-time SSE streaming completed
-- ⏳ AI image generation
+- ✅ AI image generation completed (LLM-generated prompts per essay section → FLUX image model, with sensitive-topic detection, sanitization, negative prompting, and automatic face-blurring)
 - ⏳ Conversation memory
 - ⏳ Long-term user preferences
 - ⏳ Summarisation middleware
 - ⏳ Persistent chat storage
-
-## Future Goals
-
-- AI-generated images
-- Long-term conversation memory
-- User preference learning
-- Summarisation middleware
-- Persistent chat history
-- Production deployment
 
 ## Author
 

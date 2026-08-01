@@ -45,12 +45,14 @@ async def generate_essay(request: EssayRequest):
             "essay": "",
             "score": 0,
             "best_essay": "",
+            "best_sections": [],
             "best_score": 0,
             "feedback": [],
             "passed": False,
             "attempts": 0,
             "is_valid": True,
             "response": "",
+            "images": [],
         }
     )
 
@@ -86,6 +88,15 @@ async def generate_essay(request: EssayRequest):
             }
 
             await asyncio.sleep(0.01)
+
+        images = result.get("images", [])
+
+        if images:
+
+            yield {
+                "event": "images",
+                "data": json.dumps(images)
+            }
 
 
 

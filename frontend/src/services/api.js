@@ -1,7 +1,7 @@
 const API_URL = "http://127.0.0.1:8000";
 
 
-export async function generateEssayStream(idea, onChunk) {
+export async function generateEssayStream(idea, onChunk, onImages) {
 
   const response = await fetch(
     `${API_URL}/generate`,
@@ -40,28 +40,39 @@ export async function generateEssayStream(idea, onChunk) {
 
       const lines = rawEvent.split("\n");
 
+      // Default SSE event type is "message" when no explicit "event:" line
+      // is present.
+      let eventType = "message";
+      let dataLine = null;
+
       for (const line of lines) {
 
-        if (line.startsWith("data:")) {
-
-       
-          const raw = line.slice(5).replace(/^ /, "");
-
-          if (raw.length > 0) {
-
-            try {
-              // Tokens are JSON-encoded server-side so embedded
-              // newlines/whitespace survive intact.
-              const token = JSON.parse(raw);
-              onChunk(token);
-            } catch (e) {
-              console.error("Failed to parse SSE token:", raw, e);
-            }
-
-          }
-
+        if (line.startsWith("event:")) {
+          eventType = line.slice(6).replace(/^ /, "");
         }
 
+        if (line.startsWith("data:")) {
+          dataLine = line.slice(5).replace(/^ /, "");
+        }
+
+      }
+
+      if (dataLine === null || dataLine.length === 0) {
+        continue;
+      }
+
+      try {
+        const parsed = JSON.parse(dataLine);
+
+        if (eventType === "images") {
+          onImages?.(parsed);
+        } else {
+          // Tokens are JSON-encoded server-side so embedded
+          // newlines/whitespace survive intact.
+          onChunk(parsed);
+        }
+      } catch (e) {
+        console.error("Failed to parse SSE event:", eventType, dataLine, e);
       }
 
     }

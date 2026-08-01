@@ -71,57 +71,83 @@ function ChatPage() {
     let firstChunk = true;
 
     try {
-      await generateEssayStream(text, (chunk) => {
-        // First chunk -> create AI message
-        if (firstChunk) {
-          firstChunk = false;
+      await generateEssayStream(
+        text,
 
-          // Hide typing indicator
-          setTypingConversationId(null);
+        // Text streaming callback
+        (chunk) => {
+          // First chunk -> create AI message
+          if (firstChunk) {
+            firstChunk = false;
 
+            // Hide typing indicator
+            setTypingConversationId(null);
+
+            setConversations((prev) =>
+              prev.map((chat) => {
+                if (chat.id !== conversationId) return chat;
+
+                return {
+                  ...chat,
+                  messages: [
+                    ...chat.messages,
+                    {
+                      id: aiMessageId,
+                      sender: "ai",
+                      text: chunk,
+                      images: [],
+                    },
+                  ],
+                };
+              })
+            );
+
+            return;
+          }
+
+          // Remaining chunks
           setConversations((prev) =>
             prev.map((chat) => {
               if (chat.id !== conversationId) return chat;
 
               return {
                 ...chat,
-                messages: [
-                  ...chat.messages,
-                  {
-                    id: aiMessageId,
-                    sender: "ai",
-                    text: chunk,
-                    images: [],
-                  },
-                ],
+                messages: chat.messages.map((msg) => {
+                  if (msg.id === aiMessageId) {
+                    return {
+                      ...msg,
+                      text: msg.text + chunk,
+                    };
+                  }
+
+                  return msg;
+                }),
               };
             })
           );
+        },
 
-          return;
+        // Images callback
+        (images) => {
+          setConversations((prev) =>
+            prev.map((chat) => {
+              if (chat.id !== conversationId) return chat;
+
+              return {
+                ...chat,
+                messages: chat.messages.map((msg) =>
+                  msg.id === aiMessageId
+                    ? {
+                        ...msg,
+                        images,
+                      }
+                    : msg
+                ),
+              };
+            })
+          );
         }
-
-        // Remaining chunks
-        setConversations((prev) =>
-          prev.map((chat) => {
-            if (chat.id !== conversationId) return chat;
-
-            return {
-              ...chat,
-              messages: chat.messages.map((msg) => {
-                if (msg.id === aiMessageId) {
-                  return {
-                    ...msg,
-                    text: msg.text + chunk,
-                  };
-                }
-
-                return msg;
-              }),
-            };
-          })
-        );
-      });
+      );
 
       // Safety
       setTypingConversationId(null);

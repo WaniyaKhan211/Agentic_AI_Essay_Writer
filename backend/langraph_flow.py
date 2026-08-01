@@ -5,7 +5,8 @@ from schemas.state_schema import EssayState
 from nodes.graph import (
     research_node,
     writer_node,
-    judge_node
+    judge_node,
+    image_node
 )
 
 from nodes.validator import validator_node
@@ -50,11 +51,16 @@ graph.add_node(
     judge_node
 )
 
+graph.add_node(
+    "images",
+    image_node
+)
+
+
 
 graph.set_entry_point(
     "validator"
 )
-
 
 graph.add_conditional_edges(
     "validator",
@@ -83,9 +89,15 @@ graph.add_conditional_edges(
     check_score,
     {
         "retry": "writer",
-        "end": END
+        "end": "images"
     }
 )
 
+
+
+graph.add_edge(
+    "images",
+    END
+)
 
 essay_graph = graph.compile()
