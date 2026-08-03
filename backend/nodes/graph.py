@@ -25,7 +25,8 @@ def writer_node(state):
         user_idea=state["idea"],
         research=state["research"],
         references=state["references"],
-        feedback="\n".join(state["feedback"])
+        feedback="\n".join(state["feedback"]),
+        previous_essay=state.get("previous_essay", ""),
     )
 
     return {

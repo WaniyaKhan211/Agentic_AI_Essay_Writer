@@ -1,4 +1,4 @@
-function TypingIndicator() {
+function TypingIndicator({ statusText }) {
   return (
     <div className="message ai">
       <div className="avatar">
@@ -6,9 +6,9 @@ function TypingIndicator() {
       </div>
 
       <div className="bubble typing">
-        <span></span>
-        <span></span>
-        <span></span>
+        <span className="typing-status">
+          {statusText || "Thinking..."}
+        </span>
       </div>
     </div>
   );

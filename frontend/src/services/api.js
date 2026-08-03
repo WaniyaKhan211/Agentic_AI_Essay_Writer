@@ -1,7 +1,15 @@
 const API_URL = "http://127.0.0.1:8000";
 
 
-export async function generateEssayStream(idea, onChunk, onImages) {
+export async function generateEssayStream(idea, callbacks, signal, conversationId) {
+
+  const {
+    onChunk,
+    onImages,
+    onStatus,
+    onTitle,
+    onError,
+  } = callbacks;
 
   const response = await fetch(
     `${API_URL}/generate`,
@@ -12,7 +20,9 @@ export async function generateEssayStream(idea, onChunk, onImages) {
       },
       body: JSON.stringify({
         idea: idea,
+        conversation_id: conversationId != null ? String(conversationId) : null,
       }),
+      signal,
     }
   );
 
@@ -21,9 +31,6 @@ export async function generateEssayStream(idea, onChunk, onImages) {
 
   const decoder = new TextDecoder();
 
-  // Buffer across reads: network chunking doesn't respect SSE
-  // event/line boundaries, so partial lines from one read() must be
-  // carried over and completed by the next one.
   let buffer = "";
 
   const processBuffer = (isFinal) => {
@@ -32,16 +39,12 @@ export async function generateEssayStream(idea, onChunk, onImages) {
 
     const events = normalized.split("\n\n");
 
-    // Keep the last (possibly incomplete) piece buffered, unless this
-    // is the final flush after the stream has ended.
     buffer = isFinal ? "" : events.pop();
 
     for (const rawEvent of events) {
 
       const lines = rawEvent.split("\n");
 
-      // Default SSE event type is "message" when no explicit "event:" line
-      // is present.
       let eventType = "message";
       let dataLine = null;
 
@@ -66,9 +69,14 @@ export async function generateEssayStream(idea, onChunk, onImages) {
 
         if (eventType === "images") {
           onImages?.(parsed);
+        } else if (eventType === "status") {
+          onStatus?.(parsed);
+        } else if (eventType === "title") {
+          onTitle?.(parsed);
+        } else if (eventType === "error") {
+          onError?.(parsed);
         } else {
-          // Tokens are JSON-encoded server-side so embedded
-          // newlines/whitespace survive intact.
+          
           onChunk(parsed);
         }
       } catch (e) {
@@ -95,8 +103,6 @@ export async function generateEssayStream(idea, onChunk, onImages) {
 
   }
 
-  // Flush any final event still sitting in the buffer (e.g. the last
-  // event if the stream ended without a trailing blank-line separator).
   buffer += decoder.decode();
   processBuffer(true);
 

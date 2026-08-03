@@ -18,3 +18,5 @@ class EssayState(TypedDict):
     is_valid: bool
     response: str
     images: List[dict]
+    previous_essay: str
+    is_followup: bool

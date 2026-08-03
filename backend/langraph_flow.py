@@ -1,4 +1,5 @@
 from langgraph.graph import StateGraph, END
+from langgraph.checkpoint.memory import InMemorySaver
 
 from schemas.state_schema import EssayState
 
@@ -11,7 +12,13 @@ from nodes.graph import (
 
 from nodes.validator import validator_node
 
+def route_entry(state):
+    if state.get("is_followup") and state.get("previous_essay"):
+        return "writer"
 
+    return "validator"
+
+    
 def check_request(state):
 
     if state["is_valid"]:
@@ -56,10 +63,12 @@ graph.add_node(
     image_node
 )
 
-
-
-graph.set_entry_point(
-    "validator"
+graph.set_conditional_entry_point(
+    route_entry,
+    {
+        "validator": "validator",
+        "writer": "writer"
+    },
 )
 
 graph.add_conditional_edges(
@@ -100,4 +109,5 @@ graph.add_edge(
     END
 )
 
-essay_graph = graph.compile()
+memory = InMemorySaver()
+essay_graph = graph.compile(checkpointer=memory)

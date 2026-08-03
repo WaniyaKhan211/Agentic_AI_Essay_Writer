@@ -2,7 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import MessageBubble from "./MessageBubble";
 import TypingIndicator from "./TypingIndicator";
 
-function ChatWindow({ messages, isTyping }) {
+function ChatWindow({
+  messages,
+  isTyping,
+  typingStatus,
+  onEditMessage,
+  onRegenerateMessage,
+  onFeedback,
+}) {
   const chatRef = useRef(null);
   const bottomRef = useRef(null);
 
@@ -38,20 +45,27 @@ function ChatWindow({ messages, isTyping }) {
     bottomRef.current?.scrollIntoView({
       behavior: "auto",
     });
-  }, [messages, isTyping, autoScroll]);
+  }, [messages, isTyping, typingStatus, autoScroll]);
 
   return (
     <div className="chat-window" ref={chatRef}>
       {messages.map((message, index) => (
         <MessageBubble
           key={message.id ?? index}
+          id={message.id ?? index}
           sender={message.sender}
           text={message.text}
           images={message.images}
+          isStreaming={!!message.streaming}
+          liked={!!message.liked}
+          disliked={!!message.disliked}
+          onEdit={onEditMessage}
+          onRegenerate={onRegenerateMessage}
+          onFeedback={onFeedback}
         />
       ))}
 
-      {isTyping && <TypingIndicator />}
+      {isTyping && <TypingIndicator statusText={typingStatus} />}
 
       <div ref={bottomRef} />
     </div>

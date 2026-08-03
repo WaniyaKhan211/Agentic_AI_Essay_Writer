@@ -20,10 +20,8 @@ def generate_essay(
     research: str = "",
     references=None,
     feedback: str = "",
+    previous_essay: str = "",
 ):
-    """
-    Generate or regenerate an essay.
-    """
 
     prompt = f"""
 You are an expert essay writer.
@@ -38,6 +36,21 @@ USER IDEA:
 
 WEB RESEARCH:
 {research}
+"""
+
+    if previous_essay:
+        prompt += f"""
+
+CONTEXT — EXISTING ESSAY FROM EARLIER IN THIS CONVERSATION:
+{previous_essay}
+
+The text in USER IDEA above is NOT a new topic. It is the user's follow-up
+request describing a change, addition, or refinement to make to the
+existing essay shown above.
+
+Rewrite the COMPLETE, UPDATED essay so it fully incorporates this request.
+Keep everything from the existing essay that is still relevant, and only
+change/add what the request asks for.
 """
 
     # If feedback exists, improve the previous essay

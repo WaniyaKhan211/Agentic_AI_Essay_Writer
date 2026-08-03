@@ -10,6 +10,7 @@ import {
   FiEdit2,
   FiX,
 } from "react-icons/fi";
+import { FaThumbsUp, FaThumbsDown } from "react-icons/fa";
 import "../styles/markdown.css";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -17,9 +18,22 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import rehypeHighlight from "rehype-highlight";
 
-function MessageBubble({ sender, text, images = [] }) {
+function MessageBubble({
+  id,
+  sender,
+  text,
+  images = [],
+  isStreaming = false,
+  liked = false,
+  disliked = false,
+  onEdit,
+  onRegenerate,
+  onFeedback,
+}) {
   const [copied, setCopied] = useState(false);
   const [showSources, setShowSources] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [draftText, setDraftText] = useState(text);
 
   const copyMessage = async () => {
     await navigator.clipboard.writeText(text);
@@ -29,6 +43,37 @@ function MessageBubble({ sender, text, images = [] }) {
     setTimeout(() => {
       setCopied(false);
     }, 2000);
+  };
+
+  const startEditing = () => {
+    setDraftText(text);
+    setIsEditing(true);
+  };
+
+  const cancelEditing = () => {
+    setDraftText(text);
+    setIsEditing(false);
+  };
+
+  const saveEdit = () => {
+    const trimmed = draftText.trim();
+
+    if (!trimmed || trimmed === text) {
+      setIsEditing(false);
+      return;
+    }
+
+    onEdit?.(id, trimmed);
+    setIsEditing(false);
+  };
+
+  const handleEditKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      saveEdit();
+    } else if (e.key === "Escape") {
+      cancelEditing();
+    }
   };
 
   const getFavicon = (url) => {
@@ -41,8 +86,6 @@ function MessageBubble({ sender, text, images = [] }) {
   }
 };
 
-// Pull every markdown link [label](url) out of the raw text so we can
-// show them as a single "sources" stack instead of one icon per link.
 const sources = useMemo(() => {
   const regex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
   const seen = new Map();
@@ -58,9 +101,6 @@ const sources = useMemo(() => {
   return Array.from(seen, ([url, label]) => ({ url, label }));
 }, [text]);
 
-// Strip a trailing "References"/"Sources" section (heading + link list)
-// out of what gets displayed — we already pulled the links out above,
-// so the essay body no longer needs to show that section itself.
 const cleanedText = useMemo(() => {
   if (!text) return text;
 
@@ -103,6 +143,45 @@ const extraSourcesCount = sources.length - visibleSources.length;
       <div className="message-content">
 
         <div className="bubble">
+  {isEditing ? (
+    <div className="edit-message-form">
+      <textarea
+        className="edit-message-textarea"
+        value={draftText}
+        autoFocus
+        rows={1}
+        onChange={(e) => {
+          setDraftText(e.target.value);
+          e.target.style.height = "auto";
+          e.target.style.height = e.target.scrollHeight + "px";
+        }}
+        onKeyDown={handleEditKeyDown}
+        onFocus={(e) => {
+          e.target.style.height = "auto";
+          e.target.style.height = e.target.scrollHeight + "px";
+        }}
+      />
+
+      <div className="edit-message-actions">
+        <button
+          type="button"
+          className="edit-cancel-btn"
+          onClick={cancelEditing}
+        >
+          Cancel
+        </button>
+
+        <button
+          type="button"
+          className="edit-save-btn"
+          onClick={saveEdit}
+        >
+          Save & Submit
+        </button>
+      </div>
+    </div>
+  ) : (
+    <>
   <div className="markdown-body">
     <ReactMarkdown
   remarkPlugins={[remarkGfm, remarkMath]}
@@ -117,6 +196,8 @@ const extraSourcesCount = sources.length - visibleSources.length;
 
   {images.length > 0 && (
     <ImageGallery images={images} />
+  )}
+  </>
   )}
 
   {sources.length > 0 && (
@@ -215,6 +296,7 @@ const extraSourcesCount = sources.length - visibleSources.length;
   </div>
 )}
 
+        {!isEditing && (
         <div className="message-actions">
 
           <button
@@ -231,26 +313,37 @@ const extraSourcesCount = sources.length - visibleSources.length;
           </button>
 
           {sender === "user" ? (
-            <button>
+            <button onClick={startEditing} title="Edit message">
               <FiEdit2 size={16} />
             </button>
           ) : (
             <>
-              <button>
-                <FiRefreshCw size={16} />
+              {!isStreaming && (
+                <button onClick={() => onRegenerate?.(id)} title="Regenerate response">
+                  <FiRefreshCw size={16} />
+                </button>
+              )}
+
+              <button
+                className={liked ? "feedback-btn active" : "feedback-btn"}
+                onClick={() => onFeedback?.(id, "like")}
+                title="Good response"
+              >
+                {liked ? <FaThumbsUp size={15} /> : <FiThumbsUp size={16} />}
               </button>
 
-              <button>
-                <FiThumbsUp size={16} />
-              </button>
-
-              <button>
-                <FiThumbsDown size={16} />
+              <button
+                className={disliked ? "feedback-btn active" : "feedback-btn"}
+                onClick={() => onFeedback?.(id, "dislike")}
+                title="Bad response"
+              >
+                {disliked ? <FaThumbsDown size={15} /> : <FiThumbsDown size={16} />}
               </button>
             </>
           )}
 
         </div>
+        )}
 
       </div>
     </div>
