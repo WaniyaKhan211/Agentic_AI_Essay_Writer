@@ -49,16 +49,15 @@ This document explains the technologies selected for the Agentic AI Essay Writer
 # Image Generation
 
 ## Model
-**FLUX.1-Krea-dev (Hugging Face)**
+**black-forest-labs/FLUX.1-schnell (Hugging Face)**
 
 ### Purpose
 Generate AI illustrations related to the generated essay.
 
 ### Why this model?
-- Fine-tuned version of FLUX.1-dev.
-- Produces aesthetically pleasing images.
-- Excellent prompt understanding.
-- High-quality image generation.
+- Fast image generation with low latency.
+- Produces high-quality images from detailed prompts.
+- Cost-effective for real-time applications.
 - Easily integrated through Hugging Face.
 
 ---
@@ -165,7 +164,7 @@ This information can be reused in future sessions.
 | Agent Framework | LangGraph |
 | LLM | openai/gpt-oss-120b (Groq) |
 | Web Search | Exa Search API |
-| Image Generation | FLUX.1-Krea-dev (Hugging Face) |
+| Image Generation | FLUX.1-schnell (Hugging Face) |
 | Frontend | React |
 | Short-Term Memory | LangGraph Checkpointer |
 | Mid-Term Memory | LLM Summarization Middleware |
