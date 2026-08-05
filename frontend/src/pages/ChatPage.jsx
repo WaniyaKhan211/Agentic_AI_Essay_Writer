@@ -1,6 +1,10 @@
-import { useRef, useState } from "react";
-import { generateEssayStream } from "../services/api";
-
+import { useEffect, useRef, useState } from "react";
+import {
+    generateEssayStream,
+    getSessions,
+    getSessionMessages,
+} from "../services/api";
+import { v4 as uuidv4 } from "uuid";
 import Header from "../components/Header";
 import Sidebar from "../components/Sidebar";
 import ChatWindow from "../components/ChatWindow";
@@ -20,21 +24,8 @@ const generateId = () => `${Date.now()}-${idCounter++}`;
 function ChatPage() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
-  const [conversations, setConversations] = useState([
-    {
-      id: 1,
-      title: "New Chat",
-      messages: [
-        {
-          id: generateId(),
-          sender: "ai",
-          text: "Hello! Give me a topic and I will help you write an essay.",
-        },
-      ],
-    },
-  ]);
-
-  const [currentConversation, setCurrentConversation] = useState(1);
+  const [conversations, setConversations] = useState([]);
+  const [currentConversation, setCurrentConversation] = useState(null);
 
   // Stores which conversation is currently waiting for the first AI chunk
   const [typingConversationId, setTypingConversationId] = useState(null);
@@ -45,6 +36,9 @@ function ChatPage() {
   // Keeps track of the currently in-flight stream so it can be cancelled
   // (e.g. when the user edits a message mid-generation).
   const streamRef = useRef(null);
+  useEffect(() => {
+    loadPreviousChats();
+  }, []);
 
   const activeConversation = conversations.find(
     (chat) => chat.id === currentConversation
@@ -95,6 +89,7 @@ function ChatPage() {
                 return {
                   ...chat,
                   title,
+                  persisted: true,
                 };
               })
             );
@@ -262,6 +257,58 @@ function ChatPage() {
     }
   };
 
+  const loadPreviousChats = async () => {
+    try {
+      const sessions = await getSessions();
+
+      if (sessions.length === 0) {
+        const id = uuidv4();
+
+        setConversations([
+          {
+            id,
+            title: "New Chat",
+            persisted: false,
+            messages: [
+              {
+                id: generateId(),
+                sender: "ai",
+                text: "Hello! Give me a topic and I will help you write an essay.",
+              },
+            ],
+          },
+        ]);
+
+        setCurrentConversation(id);
+        return;
+      }
+
+      const chats = await Promise.all(
+        sessions.map(async (session) => {
+          const messages = await getSessionMessages(session.id);
+
+          return {
+            id: session.id,
+            title: session.title,
+            persisted: true,
+            messages: messages.map((msg) => ({
+              ...msg,
+              images: msg.images || [],
+              liked: msg.liked || false,
+              disliked: msg.disliked || false,
+              streaming: false,
+            })),
+          };
+        })
+      );
+
+      setConversations(chats);
+      setCurrentConversation(chats[0].id);
+    } catch (err) {
+      console.error("Failed loading chats", err);
+    }
+  };
+
   const sendMessage = (text) => {
     const conversationId = currentConversation;
 
@@ -271,16 +318,17 @@ function ChatPage() {
       text,
     };
 
-    setConversations((prev) =>
-      prev.map((chat) => {
-        if (chat.id !== conversationId) return chat;
+    setConversations((prev) => {
+      const target = prev.find((chat) => chat.id === conversationId);
+      if (!target) return prev;
 
-        return {
-          ...chat,
-          messages: [...chat.messages, userMessage],
-        };
-      })
-    );
+      const updatedChat = {
+        ...target,
+        messages: [...target.messages, userMessage],
+      };
+
+      return [updatedChat, ...prev.filter((chat) => chat.id !== conversationId)];
+    });
 
     const aiMessageId = generateId();
     streamAIResponse(conversationId, text, aiMessageId);
@@ -298,19 +346,19 @@ function ChatPage() {
 
     abortActiveStream(conversationId);
 
-    setConversations((prev) =>
-      prev.map((chat) => {
-        if (chat.id !== conversationId) return chat;
+    setConversations((prev) => {
+      const target = prev.find((chat) => chat.id === conversationId);
+      if (!target) return prev;
 
-        const idx = chat.messages.findIndex((m) => m.id === messageId);
-        if (idx === -1) return chat;
+      const idx = target.messages.findIndex((m) => m.id === messageId);
+      if (idx === -1) return prev;
 
-        const truncated = chat.messages.slice(0, idx);
-        truncated.push({ ...chat.messages[idx], text: trimmed });
+      const truncated = target.messages.slice(0, idx);
+      truncated.push({ ...target.messages[idx], text: trimmed });
 
-        return { ...chat, messages: truncated };
-      })
-    );
+      const updatedChat = { ...target, messages: truncated };
+      return [updatedChat, ...prev.filter((chat) => chat.id !== conversationId)];
+    });
 
     const aiMessageId = generateId();
     streamAIResponse(conversationId, trimmed, aiMessageId);
@@ -333,12 +381,13 @@ function ChatPage() {
 
     abortActiveStream(conversationId);
 
-    setConversations((prev) =>
-      prev.map((c) => {
-        if (c.id !== conversationId) return c;
-        return { ...c, messages: c.messages.slice(0, idx) };
-      })
-    );
+    setConversations((prev) => {
+      const target = prev.find((c) => c.id === conversationId);
+      if (!target) return prev;
+
+      const updatedChat = { ...target, messages: target.messages.slice(0, idx) };
+      return [updatedChat, ...prev.filter((c) => c.id !== conversationId)];
+    });
 
     const newAiMessageId = generateId();
     streamAIResponse(conversationId, promptText, newAiMessageId);
@@ -373,8 +422,9 @@ function ChatPage() {
 
   const createNewChat = () => {
     const newConversation = {
-      id: Date.now(),
+      id: uuidv4(),
       title: "New Chat",
+      persisted: false,
       messages: [
         {
           id: generateId(),
@@ -384,7 +434,7 @@ function ChatPage() {
       ],
     };
 
-    setConversations((prev) => [...prev, newConversation]);
+    setConversations((prev) => [newConversation, ...prev]);
     setCurrentConversation(newConversation.id);
   };
 
@@ -392,7 +442,7 @@ function ChatPage() {
     <div className="app-container">
       <Sidebar
         isOpen={isSidebarOpen}
-        conversations={conversations}
+        conversations={conversations.filter((chat) => chat.persisted)}
         currentConversation={currentConversation}
         setCurrentConversation={setCurrentConversation}
         createNewChat={createNewChat}
@@ -406,7 +456,7 @@ function ChatPage() {
 
         <div className="chat-container">
           <ChatWindow
-            messages={activeConversation.messages}
+            messages={activeConversation?.messages || []}
             isTyping={typingConversationId === currentConversation}
             typingStatus={typingStatus}
             onEditMessage={editUserMessage}

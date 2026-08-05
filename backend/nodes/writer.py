@@ -1,5 +1,6 @@
 from langchain_groq import ChatGroq
 from utils.markdown_formatter import format_markdown
+from utils.history_formatter import format_conversation_history
 from schemas.essay_schema import EssayOutput
 from config import (
     GROQ_API_KEY,
@@ -21,7 +22,10 @@ def generate_essay(
     references=None,
     feedback: str = "",
     previous_essay: str = "",
+    conversation_history=None,
 ):
+
+    history_text = format_conversation_history(conversation_history or [])
 
     prompt = f"""
 You are an expert essay writer.
@@ -36,6 +40,16 @@ USER IDEA:
 
 WEB RESEARCH:
 {research}
+"""
+
+    if history_text:
+        prompt += f"""
+
+RECENT CONVERSATION (for context only — earlier requests the user made,
+such as tone, length, or structure preferences, may still apply unless
+contradicted by the current request):
+
+{history_text}
 """
 
     if previous_essay:

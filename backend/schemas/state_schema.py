@@ -1,9 +1,11 @@
 from typing import TypedDict, List
-
+from langchain_core.messages import BaseMessage
 
 class EssayState(TypedDict):
 
     idea: str
+    session_id: str
+    conversation_history: List[BaseMessage]
     research: str
     references: List[dict]
     essay: str

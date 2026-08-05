@@ -3,22 +3,37 @@ import json
 import queue
 import re
 import threading
-import uuid
+import traceback
 
 from sse_starlette.sse import EventSourceResponse
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from langraph_flow import essay_graph
 from schemas.api_schema import EssayRequest
+
 from nodes.title_generator import generate_title
+
+from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage
+
+from database.chat_repository import (
+    create_chat_session,
+    save_message,
+    session_exists,
+    get_chat_messages,
+    get_chat_sessions,
+    update_session_timestamp,
+    hide_messages_from
+)
+
+from models.session_info import session_info
 
 
 app = FastAPI(
     title="Agentic AI Essay Writer API"
 )
-
 
 app.add_middleware(
     CORSMiddleware,
@@ -31,13 +46,49 @@ app.add_middleware(
 
 @app.get("/")
 def home():
-
     return {
         "message": "Agentic AI Essay Writer API is running."
     }
 
 
-# Friendly progress messages shown to the user while the agent works.
+@app.get("/sessions")
+def list_sessions():
+    """
+    Returns all persisted chat sessions (most recently updated first),
+    for populating the sidebar on page load.
+    """
+
+    sessions = get_chat_sessions()
+
+    return [
+        {
+            "id": s["session_id"],
+            "title": s["title"],
+        }
+        for s in sessions
+    ]
+
+
+@app.get("/sessions/{session_id}/messages")
+def get_session_messages(session_id: str):
+
+    if not session_exists(session_id):
+        raise HTTPException(status_code=404, detail="Session not found.")
+
+    messages = get_chat_messages(session_id)
+
+    return [
+        {
+            "id": m["message_id"],
+            "sender": "user" if m["role"] == "user" else "ai",
+            "text": m["content"],
+            "version": m.get("version", 1),
+            "parent_id": m.get("parent_id"),
+        }
+        for m in messages
+    ]
+
+
 STATUS_MESSAGES = {
     "validator": "Understanding your request...",
     "research": "Researching your topic...",
@@ -49,10 +100,14 @@ STATUS_MESSAGES = {
 def build_status_message(node_name, state):
 
     if node_name == "judge":
+
         if state.get("passed") or state.get("attempts", 0) >= 3:
             return "Finalizing your essay..."
 
-        return f"Revising the essay (attempt {state.get('attempts', 0) + 1})..."
+        return (
+            f"Revising the essay "
+            f"(attempt {state.get('attempts', 0) + 1})..."
+        )
 
     return STATUS_MESSAGES.get(node_name)
 
@@ -60,136 +115,295 @@ def build_status_message(node_name, state):
 @app.post("/generate")
 async def generate_essay(request: EssayRequest):
 
-    thread_id = request.conversation_id or str(uuid.uuid4())
-    config = {"configurable": {"thread_id": thread_id}}
+    thread_id = request.conversation_id
+    print(request.conversation_id)
+    print(type(request.conversation_id))
+
+    if not thread_id:
+        raise Exception("Conversation_id is required.")
+
+    if thread_id not in session_info:
+
+        session_info[thread_id] = {
+            "current_session_id": thread_id,
+            "is_session_new": not session_exists(thread_id)
+        }
+
+    config = {
+        "configurable": {
+            "thread_id": thread_id
+        }
+    }
 
     previous_essay = ""
     previous_research = ""
     previous_references = []
 
+    conversation_history = []
+
+    if not session_info[thread_id]["is_session_new"]:
+
+        messages = get_chat_messages(thread_id)
+
+        for msg in messages:
+
+            if msg["role"] == "user":
+
+                conversation_history.append(
+                    HumanMessage(
+                        content=msg["content"]
+                    )
+                )
+
+            else:
+
+                conversation_history.append(
+                    AIMessage(
+                        content=msg["content"]
+                    )
+                )
+
     try:
+
         snapshot = essay_graph.get_state(config)
+
         prior_values = snapshot.values if snapshot else {}
+
     except Exception:
+
         prior_values = {}
 
-    previous_essay = prior_values.get("best_essay", "")
+    previous_essay = prior_values.get(
+        "best_essay",
+        ""
+    )
+
+    # Fallback for when the in-memory LangGraph checkpointer has no
+    # record of this thread (e.g. the server restarted since the essay
+    # was generated) but the DB-backed conversation_history does — use
+    # the last assistant message as the previous essay so follow-ups
+    # keep working across restarts.
+    if not previous_essay:
+
+        for msg in reversed(conversation_history):
+
+            if isinstance(msg, AIMessage):
+                previous_essay = msg.content
+                break
+
     is_followup = bool(previous_essay)
 
     if is_followup:
-        previous_research = prior_values.get("research", "")
-        previous_references = prior_values.get("references", [])
+
+        previous_research = prior_values.get(
+            "research",
+            ""
+        )
+
+        previous_references = prior_values.get(
+            "references",
+            []
+        )
 
     inputs = {
+
         "idea": request.idea,
+        "session_id": thread_id,
+        "conversation_history": conversation_history,
+
         "essay": "",
         "score": 0,
+
         "best_essay": "",
         "best_sections": [],
         "best_score": 0,
+
         "feedback": [],
         "passed": False,
         "attempts": 0,
+
         "is_valid": True,
         "response": "",
+
         "images": [],
+
         "is_followup": is_followup,
-        "previous_essay": previous_essay,
+        "previous_essay": previous_essay
     }
 
-    if is_followup:
-        
-        inputs["research"] = previous_research
-        inputs["references"] = previous_references
-    else:
-        # Brand new topic: start research/references fresh.
-        inputs["research"] = ""
-        inputs["references"] = []
+    inputs["research"] = ""
+    inputs["references"] = []
 
     async def essay_stream():
 
-        q: "queue.Queue" = queue.Queue()
+        q = queue.Queue()
 
         def run_agent():
-
             try:
-
-                if not is_followup:
+                if session_info[thread_id]["is_session_new"]:
                     title = generate_title(inputs["idea"])
+                    session_created = create_chat_session(thread_id, title)
+                    if not session_created:
+                        raise Exception("Unable to create chat session.")
+                    session_info[thread_id]["is_session_new"] = False
                     q.put(("title", title))
 
-                state = dict(inputs)
+                # Fetch existing visible messages for this session
+                existing_messages = get_chat_messages(thread_id)
 
-                for update in essay_graph.stream(
-                    inputs, config=config, stream_mode="updates"
+                # Check if this user prompt already exists (Regeneration case)
+                existing_user_msg = next(
+                    (m for m in reversed(existing_messages) if m.get("role") == "user" and m.get("content") == request.idea),
+                    None
+                )
+
+                if existing_user_msg:
+                    # REGENERATION CASE:
+                    # Reuse existing user message as parent_id and increment version
+                    parent_user_id = existing_user_msg.get("message_id")
+                    previous_versions = [
+                        m for m in existing_messages if m.get("parent_id") == parent_user_id
+                    ]
+                    next_version = len(previous_versions) + 1
+                else:
+                    # EDIT OR NEW PROMPT CASE:
+                    # If user edited an earlier message, hide previous superseded messages
+                    if existing_messages:
+                        ids_to_hide = [m["message_id"] for m in existing_messages]
+                        hide_messages_from(thread_id, ids_to_hide)
+
+                    # Save new user message
+                    user_saved = save_message(
+                        session_id=thread_id,
+                        role="user",
+                        content=request.idea,
+                        status="visible",
+                        version=1
+                    )
+                    if not user_saved:
+                        raise Exception("Unable to save user message.")
+
+                    parent_user_id = user_saved[0]["message_id"] if user_saved else None
+                    next_version = 1
+
+                    conversation_history.append(
+                        HumanMessage(content=request.idea)
+                    )
+
+                final_state = dict(inputs)
+                any_event_received = False
+
+                for event in essay_graph.stream(
+                    inputs,
+                    config=config,
+                    stream_mode="updates"
                 ):
+                    for node_name, state in event.items():
+                        status = build_status_message(node_name, state)
+                        if status:
+                            q.put(("status", status))
 
-                    for node_name, delta in update.items():
+                        final_state.update(state)
+                        any_event_received = True
 
-                        state.update(delta)
+                if not any_event_received:
+                    raise Exception("Graph returned no result.")
 
-                        message = build_status_message(node_name, state)
+                assistant_text = (
+                    final_state["response"]
+                    if not final_state["is_valid"]
+                    else final_state["best_essay"]
+                )
 
-                        if message:
-                            q.put(("status", message))
+                # Save assistant response with parent_id and incremented version
+                assistant_saved = save_message(
+                    session_id=thread_id,
+                    role="assistant",
+                    content=assistant_text,
+                    status="visible",
+                    version=next_version,
+                    parent_id=parent_user_id
+                )
 
-                q.put(("done", state))
+                if not assistant_saved:
+                    raise Exception("Unable to save assistant response.")
+
+                timestamp_updated = update_session_timestamp(thread_id)
+                if not timestamp_updated:
+                    raise Exception("Unable to update session timestamp.")
+
+                conversation_history.append(
+                    AIMessage(content=assistant_text)
+                )
+
+                q.put(("done", final_state))
 
             except Exception as e:
-
+                print("ERROR:", e)
+                traceback.print_exc()
                 q.put(("error", str(e)))
+        thread = threading.Thread(
+            target=run_agent,
+            daemon=True
+        )
 
-        thread = threading.Thread(target=run_agent, daemon=True)
         thread.start()
 
         loop = asyncio.get_event_loop()
+
         final_state = None
 
-        # Drain progress/title events until the graph is done (or errors).
         while True:
 
-            kind, payload = await loop.run_in_executor(None, q.get)
+            kind, payload = await loop.run_in_executor(
+                None,
+                q.get
+            )
 
             if kind == "title":
+
                 yield {
                     "event": "title",
                     "data": json.dumps(payload)
                 }
 
             elif kind == "status":
+
                 yield {
                     "event": "status",
                     "data": json.dumps(payload)
                 }
 
             elif kind == "done":
+
                 final_state = payload
                 break
 
             elif kind == "error":
+
                 yield {
                     "event": "error",
                     "data": json.dumps(payload)
                 }
+
                 return
 
-        # Handle invalid input
         if not final_state["is_valid"]:
 
             response_text = final_state["response"]
 
-        # Handle generated essay
         else:
 
             response_text = final_state["best_essay"]
 
-        # Safety fallback
         if not response_text:
 
             response_text = "No response generated."
 
-        # Split into tokens but KEEP the whitespace (spaces AND newlines)
-        tokens = re.findall(r"\S+|\s+", response_text)
+        tokens = re.findall(
+            r"\S+|\s+",
+            response_text
+        )
 
         for token in tokens:
 
@@ -200,7 +414,10 @@ async def generate_essay(request: EssayRequest):
 
             await asyncio.sleep(0.01)
 
-        images = final_state.get("images", [])
+        images = final_state.get(
+            "images",
+            []
+        )
 
         if images:
 

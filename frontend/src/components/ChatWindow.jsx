@@ -55,6 +55,7 @@ function ChatWindow({
           id={message.id ?? index}
           sender={message.sender}
           text={message.text}
+          versions={message.versions || []}
           images={message.images}
           isStreaming={!!message.streaming}
           liked={!!message.liked}

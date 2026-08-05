@@ -532,3 +532,31 @@
     background:#e5e5e5;
     margin:4px 4px;
 }
+
+.version-pagination {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #8e8ea0;
+  margin-right: 6px;
+}
+
+.version-pagination button {
+  background: none;
+  border: none;
+  color: #8e8ea0;
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+}
+
+.version-pagination button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.version-pagination button:not(:disabled):hover {
+  color: #ececf1;
+}

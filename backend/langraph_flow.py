@@ -7,20 +7,17 @@ from nodes.graph import (
     research_node,
     writer_node,
     judge_node,
-    image_node
+    image_node  # Keep the import; it's just not used for now
 )
 
 from nodes.validator import validator_node
 
-def route_entry(state):
-    if state.get("is_followup") and state.get("previous_essay"):
-        return "writer"
 
+def route_entry(state):
     return "validator"
 
-    
-def check_request(state):
 
+def check_request(state):
     if state["is_valid"]:
         return "essay"
 
@@ -28,7 +25,6 @@ def check_request(state):
 
 
 def check_score(state):
-
     if state["passed"] or state["attempts"] >= 3:
         return "end"
 
@@ -36,7 +32,6 @@ def check_score(state):
 
 
 graph = StateGraph(EssayState)
-
 
 graph.add_node(
     "validator",
@@ -58,10 +53,14 @@ graph.add_node(
     judge_node
 )
 
-graph.add_node(
-    "images",
-    image_node
-)
+# -----------------------------
+# TEMPORARILY DISABLED
+# Uncomment when image generation is needed again.
+# -----------------------------
+# graph.add_node(
+#     "images",
+#     image_node
+# )
 
 graph.set_conditional_entry_point(
     route_entry,
@@ -80,34 +79,33 @@ graph.add_conditional_edges(
     }
 )
 
-
 graph.add_edge(
     "research",
     "writer"
 )
-
 
 graph.add_edge(
     "writer",
     "judge"
 )
 
-
 graph.add_conditional_edges(
     "judge",
     check_score,
     {
         "retry": "writer",
-        "end": "images"
+        "end": END  # End graph directly instead of generating images
     }
 )
 
-
-
-graph.add_edge(
-    "images",
-    END
-)
+# -----------------------------
+# TEMPORARILY DISABLED
+# Uncomment when image generation is enabled again.
+# -----------------------------
+# graph.add_edge(
+#     "images",
+#     END
+# )
 
 memory = InMemorySaver()
 essay_graph = graph.compile(checkpointer=memory)
