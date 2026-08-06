@@ -1,19 +1,27 @@
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import MessageBubble from "./MessageBubble";
 import TypingIndicator from "./TypingIndicator";
 
-function ChatWindow({
+const ChatWindow = forwardRef(function ChatWindow({
   messages,
   isTyping,
   typingStatus,
   onEditMessage,
   onRegenerateMessage,
   onFeedback,
-}) {
+}, ref) {
   const chatRef = useRef(null);
   const bottomRef = useRef(null);
 
   const [autoScroll, setAutoScroll] = useState(true);
+
+  // Expose scrollToBottom() so ChatPage can force-scroll on send/edit
+  useImperativeHandle(ref, () => ({
+    scrollToBottom() {
+      setAutoScroll(true);
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    },
+  }));
 
   // Detect whether the user is at the bottom
   useEffect(() => {
@@ -51,7 +59,7 @@ function ChatWindow({
     <div className="chat-window" ref={chatRef}>
       {messages.map((message, index) => (
         <MessageBubble
-          key={message.id ?? index}
+          key={message.stableId ?? message.id ?? index}
           id={message.id ?? index}
           sender={message.sender}
           text={message.text}
@@ -71,6 +79,6 @@ function ChatWindow({
       <div ref={bottomRef} />
     </div>
   );
-}
+});
 
 export default ChatWindow;

@@ -10,18 +10,23 @@ export async function getSessions() {
     return await response.json();
 }
 
+export async function deleteSession(sessionId) {
+    const response = await fetch(`${API_URL}/sessions/${sessionId}`, {
+        method: 'DELETE',
+    });
+    if (!response.ok) {
+        throw new Error('Failed to delete session');
+    }
+    return await response.json();
+}
 export async function getSessionMessages(sessionId) {
-    const response = await fetch(
-        `${API_URL}/sessions/${sessionId}/messages`
-    );
-
+    const response = await fetch(`${API_URL}/sessions/${sessionId}/messages`);
     if (!response.ok) {
         throw new Error("Failed to fetch messages");
     }
-
     return await response.json();
 }
-export async function generateEssayStream(idea, callbacks, signal, conversationId) {
+export async function generateEssayStream(idea, callbacks, signal, conversationId, editedMessageId = null) {
 
   const {
     onChunk,
@@ -41,6 +46,7 @@ export async function generateEssayStream(idea, callbacks, signal, conversationI
       body: JSON.stringify({
         idea: idea,
         conversation_id: conversationId != null ? String(conversationId) : null,
+        edited_message_id: editedMessageId != null ? String(editedMessageId) : null,
       }),
       signal,
     }

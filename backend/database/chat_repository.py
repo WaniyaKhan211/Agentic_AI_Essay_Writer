@@ -23,25 +23,52 @@ def session_exists(session_id: str):
     )
     return len(response.data) > 0
 
+def get_session_title(session_id: str):
+    response = (
+        supabase
+        .table("chat_sessions")
+        .select("title")
+        .eq("session_id", session_id)
+        .execute()
+    )
+    if response.data:
+        return response.data[0]["title"]
+    return None
+
 def save_message(
     session_id: str,
     role: str,
     content: str,
     status: str = "visible",
     version: int = 1,
-    parent_id: str = None
+    parent_id: str = None,
+    image_paths: list = None
 ):
+    payload = {
+        "session_id": session_id,
+        "role": role,
+        "content": content,
+        "status": status,
+        "version": version,
+        "parent_id": parent_id
+    }
+    if image_paths is not None:
+        payload["image_paths"] = image_paths
+
     response = (
         supabase
         .table("chat_messages")
-        .insert({
-            "session_id": session_id,
-            "role": role,
-            "content": content,
-            "status": status,
-            "version": version,
-            "parent_id": parent_id
-        })
+        .insert(payload)
+        .execute()
+    )
+    return response.data
+
+def update_message_image_paths(message_id: str, image_paths: list):
+    response = (
+        supabase
+        .table("chat_messages")
+        .update({"image_paths": image_paths})
+        .eq("message_id", message_id)
         .execute()
     )
     return response.data
@@ -98,3 +125,17 @@ def update_session_timestamp(session_id: str):
         .execute()
     )
     return response.data
+
+
+def delete_chat_session(session_id: str) -> bool:
+    """Delete a chat session and all its messages.
+    Returns True on success, False otherwise."""
+    try:
+        # Delete messages first
+        supabase.table("chat_messages").delete().eq("session_id", session_id).execute()
+        # Delete the session record
+        supabase.table("chat_sessions").delete().eq("session_id", session_id).execute()
+        return True
+    except Exception as e:
+        print("Error deleting chat session", e)
+        return False

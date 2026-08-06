@@ -57,10 +57,10 @@ graph.add_node(
 # TEMPORARILY DISABLED
 # Uncomment when image generation is needed again.
 # -----------------------------
-# graph.add_node(
-#     "images",
-#     image_node
-# )
+graph.add_node(
+    "images",
+    image_node
+)
 
 graph.set_conditional_entry_point(
     route_entry,
@@ -94,7 +94,7 @@ graph.add_conditional_edges(
     check_score,
     {
         "retry": "writer",
-        "end": END  # End graph directly instead of generating images
+        "end": "images"  # End graph directly instead of generating images
     }
 )
 
@@ -102,10 +102,10 @@ graph.add_conditional_edges(
 # TEMPORARILY DISABLED
 # Uncomment when image generation is enabled again.
 # -----------------------------
-# graph.add_edge(
-#     "images",
-#     END
-# )
+graph.add_edge(
+    "images",
+    END
+)
 
 memory = InMemorySaver()
 essay_graph = graph.compile(checkpointer=memory)

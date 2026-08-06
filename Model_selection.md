@@ -140,20 +140,17 @@ Benefits:
 ## 3. Long-Term Memory
 
 ### Requirement
-Store user preferences across sessions.
+
+Persist conversation history and context across sessions.
 
 ### Current Implementation
-LangGraph Store
+
+Supabase (PostgreSQL) — chat_sessions and chat_messages tables
 
 ### Purpose
-Store structured information such as:
-- Likes
-- Dislikes
-- Writing preferences
-- Do's
-- Don'ts
-
-This information can be reused in future sessions.
+Persist full conversation history beyond a single session or app restart.
+Allow past chats to be reopened and continued with complete context.
+Store generated images alongside their messages for later retrieval.
 
 ---
 
@@ -168,7 +165,7 @@ This information can be reused in future sessions.
 | Frontend | React |
 | Short-Term Memory | LangGraph Checkpointer |
 | Mid-Term Memory | LLM Summarization Middleware |
-| Long-Term Memory | LangGraph Store |
+| Long-Term Memory | Supabase (PostgreSQL) |
 
 ---
 

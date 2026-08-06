@@ -499,7 +499,7 @@
 
 .source-modal-url{
     font-size:13px;
-    color:#6b7280;
+    color:#62666e;
 
     white-space:nowrap;
     overflow:hidden;
@@ -509,14 +509,14 @@
 .source-modal-source-row{
     display:flex;
     align-items:center;
-    gap:8px;
+    gap:7px;
 
     margin-top:4px;
 }
 
 .source-modal-favicon{
-    width:18px;
-    height:18px;
+    width:20px;
+    height:20px;
     border-radius:4px;
     object-fit:cover;
 }
@@ -524,22 +524,22 @@
 .source-modal-hostname{
     font-size:13px;
     color:#202123;
-    font-weight:500;
+    font-weight:600;
 }
 
 .source-modal-divider{
     height:1px;
     background:#e5e5e5;
-    margin:4px 4px;
+    margin:3px 3px;
 }
 
 .version-pagination {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
+  font-size: 15px;
   color: #8e8ea0;
-  margin-right: 6px;
+  margin-right: 5px;
 }
 
 .version-pagination button {
@@ -547,7 +547,7 @@
   border: none;
   color: #8e8ea0;
   cursor: pointer;
-  padding: 2px;
+  padding: 1px;
   display: flex;
   align-items: center;
 }

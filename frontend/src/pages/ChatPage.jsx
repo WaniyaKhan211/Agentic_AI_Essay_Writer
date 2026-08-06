@@ -3,12 +3,14 @@ import {
     generateEssayStream,
     getSessions,
     getSessionMessages,
+    deleteSession,
 } from "../services/api";
 import { v4 as uuidv4 } from "uuid";
 import Header from "../components/Header";
 import Sidebar from "../components/Sidebar";
 import ChatWindow from "../components/ChatWindow";
 import ChatInput from "../components/ChatInput";
+import { groupMessagesWithVersions } from "../utils/messageUtils";
 
 import "../styles/chat.css";
 import "../styles/sidebar.css";
@@ -16,8 +18,7 @@ import "../styles/header.css";
 import "../styles/message.css";
 import "../styles/input.css";
 
-// Small helper for stable, unique message ids (Date.now() alone can collide
-// when a user message and its AI reply are created within the same ms).
+// Small helper for stable, unique message ids
 let idCounter = 0;
 const generateId = () => `${Date.now()}-${idCounter++}`;
 
@@ -34,8 +35,8 @@ function ChatPage() {
   const [typingStatus, setTypingStatus] = useState("");
 
   // Keeps track of the currently in-flight stream so it can be cancelled
-  // (e.g. when the user edits a message mid-generation).
   const streamRef = useRef(null);
+  const chatWindowRef = useRef(null);
   useEffect(() => {
     loadPreviousChats();
   }, []);
@@ -44,8 +45,7 @@ function ChatPage() {
     (chat) => chat.id === currentConversation
   );
 
-  // Cancels whatever stream is currently running for a given conversation,
-  // if any. Safe to call even if nothing is streaming.
+  // Cancels whatever stream is currently running for a given conversation
   const abortActiveStream = (conversationId) => {
     if (
       streamRef.current &&
@@ -62,10 +62,15 @@ function ChatPage() {
   };
 
   // Core streaming routine shared by: sending a new message, editing a
-  // message, and regenerating an AI response. `promptText` is what gets
-  // sent to the backend; `aiMessageId` is the id the (new) AI bubble will
-  // use so we can target it with subsequent chunks.
-  const streamAIResponse = async (conversationId, promptText, aiMessageId) => {
+  // message, and regenerating an AI response.
+  const streamAIResponse = async (
+    conversationId,
+    promptText,
+    aiMessageId,
+    parentUserId = null,
+    isRegeneration = false,
+    editedMessageId = null
+  ) => {
     const controller = new AbortController();
     streamRef.current = { conversationId, aiMessageId, controller };
 
@@ -114,18 +119,83 @@ function ChatPage() {
                 prev.map((chat) => {
                   if (chat.id !== conversationId) return chat;
 
-                  return {
-                    ...chat,
-                    messages: [
-                      ...chat.messages,
-                      {
+                  const updatedMessages = [...chat.messages];
+
+                  if (isRegeneration) {
+                    // Find existing AI message responding to parentUserId (or with target id)
+                    const targetIdx = updatedMessages.findIndex(
+                      (m) =>
+                        m.sender === "ai" &&
+                        ((parentUserId && m.parent_id === parentUserId) ||
+                          m.id === aiMessageId)
+                    );
+
+                    if (targetIdx !== -1) {
+                      const targetMsg = updatedMessages[targetIdx];
+                      const existingVersions = targetMsg.versions || [
+                        {
+                          id: targetMsg.id,
+                          text: targetMsg.text,
+                          version: targetMsg.version || 1,
+                          images: targetMsg.images || [],
+                        },
+                      ];
+
+                      const newVersionNum = existingVersions.length + 1;
+                      const newVersionObj = {
                         id: aiMessageId,
+                        text: chunk,
+                        version: newVersionNum,
+                        images: [],
+                      };
+
+                      const updatedVersions = [...existingVersions, newVersionObj];
+
+                      updatedMessages[targetIdx] = {
+                        ...targetMsg,
+                        stableId: targetMsg.stableId || targetMsg.id, // never change — keeps MessageBubble mounted
+                        id: aiMessageId,
+                        text: chunk,
+                        version: newVersionNum,
+                        streaming: true,
+                        versions: updatedVersions,
+                      };
+                    } else {
+                      // Fallback: append new AI message
+                      updatedMessages.push({
+                        id: aiMessageId,
+                        stableId: aiMessageId,
                         sender: "ai",
+                        parent_id: parentUserId,
                         text: chunk,
                         images: [],
                         streaming: true,
-                      },
-                    ],
+                        version: 1,
+                        versions: [
+                          { id: aiMessageId, text: chunk, version: 1, images: [] },
+                        ],
+                      });
+                    }
+                  } else {
+                    // Standard new message
+                    updatedMessages.push({
+                      id: aiMessageId,
+                      stableId: aiMessageId,
+                      sender: "ai",
+                      parent_id: parentUserId,
+                      text: chunk,
+                      images: [],
+                      streaming: true,
+                      version: 1,
+                      versions: [
+                        { id: aiMessageId, text: chunk, version: 1, images: [] },
+                      ],
+                    });
+                  }
+
+                  return {
+                    ...chat,
+                    messages: updatedMessages,
                   };
                 })
               );
@@ -133,17 +203,27 @@ function ChatPage() {
               return;
             }
 
+            // Subsequent chunks update the text of the streaming version
             setConversations((prev) =>
               prev.map((chat) => {
                 if (chat.id !== conversationId) return chat;
 
                 return {
                   ...chat,
-                  messages: chat.messages.map((msg) =>
-                    msg.id === aiMessageId
-                      ? { ...msg, text: msg.text + chunk }
-                      : msg
-                  ),
+                  messages: chat.messages.map((msg) => {
+                    if (msg.id !== aiMessageId) return msg;
+
+                    const newText = msg.text + chunk;
+                    const updatedVersions = (msg.versions || []).map((v) =>
+                      v.id === aiMessageId ? { ...v, text: v.text + chunk } : v
+                    );
+
+                    return {
+                      ...msg,
+                      text: newText,
+                      versions: updatedVersions,
+                    };
+                  }),
                 };
               })
             );
@@ -156,9 +236,19 @@ function ChatPage() {
 
                 return {
                   ...chat,
-                  messages: chat.messages.map((msg) =>
-                    msg.id === aiMessageId ? { ...msg, images } : msg
-                  ),
+                  messages: chat.messages.map((msg) => {
+                    if (msg.id !== aiMessageId) return msg;
+
+                    const updatedVersions = (msg.versions || []).map((v) =>
+                      v.id === aiMessageId ? { ...v, images } : v
+                    );
+
+                    return {
+                      ...msg,
+                      images,
+                      versions: updatedVersions,
+                    };
+                  }),
                 };
               })
             );
@@ -191,11 +281,11 @@ function ChatPage() {
           },
         },
         controller.signal,
-        conversationId
+        conversationId,
+        editedMessageId
       );
 
-      // Mark this AI message as no longer streaming so the regenerate
-      // button becomes visible again.
+      // Mark message as no longer streaming
       setConversations((prev) =>
         prev.map((chat) => {
           if (chat.id !== conversationId) return chat;
@@ -214,9 +304,6 @@ function ChatPage() {
         setTypingStatus("");
       }
     } catch (error) {
-      // Aborted on purpose (user edited a message mid-stream) — the
-      // in-progress AI bubble has already been (or is about to be) removed
-      // by the caller, so there's nothing else to do here.
       if (error.name === "AbortError") {
         return;
       }
@@ -287,23 +374,40 @@ function ChatPage() {
         sessions.map(async (session) => {
           const messages = await getSessionMessages(session.id);
 
+          const formattedMessages = messages.map((msg) => ({
+            ...msg,
+            images: msg.images || [],
+            liked: msg.liked || false,
+            disliked: msg.disliked || false,
+            streaming: false,
+          }));
+
+          const groupedMessages = groupMessagesWithVersions(formattedMessages);
+
           return {
             id: session.id,
             title: session.title,
             persisted: true,
-            messages: messages.map((msg) => ({
-              ...msg,
-              images: msg.images || [],
-              liked: msg.liked || false,
-              disliked: msg.disliked || false,
-              streaming: false,
-            })),
+            messages: groupedMessages,
           };
         })
       );
 
-      setConversations(chats);
-      setCurrentConversation(chats[0].id);
+      const newChat = {
+        id: uuidv4(),
+        title: "New Chat",
+        persisted: false,
+        messages: [
+          {
+            id: generateId(),
+            sender: "ai",
+            text: "Hello! Give me a topic and I will help you write an essay.",
+          },
+        ],
+      };
+
+      setConversations([newChat, ...chats]);
+      setCurrentConversation(newChat.id);
     } catch (err) {
       console.error("Failed loading chats", err);
     }
@@ -311,9 +415,10 @@ function ChatPage() {
 
   const sendMessage = (text) => {
     const conversationId = currentConversation;
+    const userMessageId = generateId();
 
     const userMessage = {
-      id: generateId(),
+      id: userMessageId,
       sender: "user",
       text,
     };
@@ -330,14 +435,14 @@ function ChatPage() {
       return [updatedChat, ...prev.filter((chat) => chat.id !== conversationId)];
     });
 
+    // Scroll to bottom immediately when user sends a message
+    chatWindowRef.current?.scrollToBottom();
+
     const aiMessageId = generateId();
-    streamAIResponse(conversationId, text, aiMessageId);
+    streamAIResponse(conversationId, text, aiMessageId, userMessageId, false);
   };
 
-  // Called when the user edits one of their own messages. Truncates
-  // everything after that message (including whatever AI reply followed,
-  // finished or not), cancels any in-flight generation, then re-generates
-  // for the edited text.
+  // Called when user edits a user message
   const editUserMessage = (messageId, newText) => {
     const trimmed = newText.trim();
     if (!trimmed) return;
@@ -347,26 +452,45 @@ function ChatPage() {
     abortActiveStream(conversationId);
 
     setConversations((prev) => {
+      // Find the target conversation
       const target = prev.find((chat) => chat.id === conversationId);
       if (!target) return prev;
 
-      const idx = target.messages.findIndex((m) => m.id === messageId);
-      if (idx === -1) return prev;
+      // Filter out the edited user message and its AI reply (if any)
+      const filteredMessages = target.messages.filter((msg) => {
+        // Remove the edited user message
+        if (msg.id === messageId) return false;
+        // Remove AI message that has this user message as parent_id
+        if (msg.parent_id === messageId) return false;
+        return true;
+      });
 
-      const truncated = target.messages.slice(0, idx);
-      truncated.push({ ...target.messages[idx], text: trimmed });
+      // Append a new user message at the end
+      const newUserMessage = {
+        id: generateId(),
+        sender: "user",
+        text: trimmed,
+        // The parent_id for the upcoming AI response will be set on the backend
+      };
 
-      const updatedChat = { ...target, messages: truncated };
+      const updatedChat = {
+        ...target,
+        messages: [...filteredMessages, newUserMessage],
+      };
+
+      // Return updated conversations list, keeping order (new chat on top)
       return [updatedChat, ...prev.filter((chat) => chat.id !== conversationId)];
     });
 
+    // Scroll to bottom so the new user message and incoming response are visible
+    chatWindowRef.current?.scrollToBottom();
+
+    // Trigger backend generation with edited_message_id so old messages are hidden server‑side
     const aiMessageId = generateId();
-    streamAIResponse(conversationId, trimmed, aiMessageId);
+    streamAIResponse(conversationId, trimmed, aiMessageId, null, false, messageId);
   };
 
-  // Called when the user hits "regenerate" on an AI message. Removes that
-  // AI message (and anything after it), then re-runs generation using the
-  // same preceding user prompt.
+  // Called when user clicks "regenerate" on an AI message
   const regenerateMessage = (aiMessageId) => {
     const conversationId = currentConversation;
     const chat = conversations.find((c) => c.id === conversationId);
@@ -375,27 +499,19 @@ function ChatPage() {
     const idx = chat.messages.findIndex((m) => m.id === aiMessageId);
     if (idx === -1) return;
 
+    const targetAiMsg = chat.messages[idx];
     const precedingUser = chat.messages[idx - 1];
     const promptText = precedingUser?.text;
     if (!promptText) return;
 
+    const parentUserId = precedingUser?.id || targetAiMsg.parent_id;
+
     abortActiveStream(conversationId);
 
-    setConversations((prev) => {
-      const target = prev.find((c) => c.id === conversationId);
-      if (!target) return prev;
-
-      const updatedChat = { ...target, messages: target.messages.slice(0, idx) };
-      return [updatedChat, ...prev.filter((c) => c.id !== conversationId)];
-    });
-
     const newAiMessageId = generateId();
-    streamAIResponse(conversationId, promptText, newAiMessageId);
+    streamAIResponse(conversationId, promptText, newAiMessageId, parentUserId, true);
   };
 
-  // Records like/dislike on a message. For now this just updates local UI
-  // state; hook this up to a backend endpoint later to persist the signal
-  // as part of the user's long-term preferences.
   const setMessageFeedback = (messageId, type) => {
     setConversations((prev) =>
       prev.map((chat) => {
@@ -415,9 +531,6 @@ function ChatPage() {
         };
       })
     );
-
-    // TODO: send { messageId, type } to the backend so it can be stored
-    // against the user's long-term memory / preference profile.
   };
 
   const createNewChat = () => {
@@ -438,6 +551,13 @@ function ChatPage() {
     setCurrentConversation(newConversation.id);
   };
 
+  const handleDeleteChat = async (id) => {
+    await deleteSession(id);
+    setConversations((prev) => prev.filter((chat) => chat.id !== id));
+    // Always open a fresh new chat after deletion — no blank screen
+    createNewChat();
+  };
+
   return (
     <div className="app-container">
       <Sidebar
@@ -446,6 +566,7 @@ function ChatPage() {
         currentConversation={currentConversation}
         setCurrentConversation={setCurrentConversation}
         createNewChat={createNewChat}
+        onDeleteChat={handleDeleteChat}
       />
 
       <div className="main-content">
@@ -456,6 +577,7 @@ function ChatPage() {
 
         <div className="chat-container">
           <ChatWindow
+            ref={chatWindowRef}
             messages={activeConversation?.messages || []}
             isTyping={typingConversationId === currentConversation}
             typingStatus={typingStatus}

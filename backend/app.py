@@ -25,8 +25,11 @@ from database.chat_repository import (
     get_chat_messages,
     get_chat_sessions,
     update_session_timestamp,
-    hide_messages_from
+    hide_messages_from,
+    delete_chat_session,
+    update_message_image_paths
 )
+from database.storage_service import upload_image_data_uri, get_accessible_url
 
 from models.session_info import session_info
 
@@ -53,10 +56,8 @@ def home():
 
 @app.get("/sessions")
 def list_sessions():
-    """
-    Returns all persisted chat sessions (most recently updated first),
-    for populating the sidebar on page load.
-    """
+    # Returns all persisted chat sessions (most recently updated first),
+    # for populating the sidebar on page load.
 
     sessions = get_chat_sessions()
 
@@ -69,6 +70,16 @@ def list_sessions():
     ]
 
 
+@app.delete("/sessions/{session_id}")
+def delete_session(session_id: str):
+    if not session_exists(session_id):
+        raise HTTPException(status_code=404, detail="Session not found.")
+    success = delete_chat_session(session_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to delete session.")
+    return {"message": "Session deleted successfully."}
+
+
 @app.get("/sessions/{session_id}/messages")
 def get_session_messages(session_id: str):
 
@@ -77,16 +88,36 @@ def get_session_messages(session_id: str):
 
     messages = get_chat_messages(session_id)
 
-    return [
-        {
+    formatted = []
+    for m in messages:
+        raw_images = m.get("image_paths") or []
+        formatted_images = []
+        for img_item in raw_images:
+            if isinstance(img_item, dict):
+                path = img_item.get("path")
+                if path:
+                    url = get_accessible_url(path)
+                    formatted_images.append({
+                        "image": url,
+                        "title": img_item.get("title", ""),
+                        "caption": img_item.get("caption", ""),
+                    })
+            elif isinstance(img_item, str):
+                url = get_accessible_url(img_item)
+                formatted_images.append({
+                    "image": url,
+                })
+
+        formatted.append({
             "id": m["message_id"],
             "sender": "user" if m["role"] == "user" else "ai",
             "text": m["content"],
             "version": m.get("version", 1),
             "parent_id": m.get("parent_id"),
-        }
-        for m in messages
-    ]
+            "images": formatted_images,
+        })
+
+    return formatted
 
 
 STATUS_MESSAGES = {
@@ -141,27 +172,27 @@ async def generate_essay(request: EssayRequest):
 
     conversation_history = []
 
-    if not session_info[thread_id]["is_session_new"]:
+    # Always load history from DB so the writer has full context,
+    # even after a backend restart where session_info is empty.
+    messages = get_chat_messages(thread_id)
 
-        messages = get_chat_messages(thread_id)
+    for msg in messages:
 
-        for msg in messages:
+        if msg["role"] == "user":
 
-            if msg["role"] == "user":
-
-                conversation_history.append(
-                    HumanMessage(
-                        content=msg["content"]
-                    )
+            conversation_history.append(
+                HumanMessage(
+                    content=msg["content"]
                 )
+            )
 
-            else:
+        else:
 
-                conversation_history.append(
-                    AIMessage(
-                        content=msg["content"]
-                    )
+            conversation_history.append(
+                AIMessage(
+                    content=msg["content"]
                 )
+            )
 
     try:
 
@@ -178,11 +209,6 @@ async def generate_essay(request: EssayRequest):
         ""
     )
 
-    # Fallback for when the in-memory LangGraph checkpointer has no
-    # record of this thread (e.g. the server restarted since the essay
-    # was generated) but the DB-backed conversation_history does — use
-    # the last assistant message as the previous essay so follow-ups
-    # keep working across restarts.
     if not previous_essay:
 
         for msg in reversed(conversation_history):
@@ -251,26 +277,21 @@ async def generate_essay(request: EssayRequest):
                 # Fetch existing visible messages for this session
                 existing_messages = get_chat_messages(thread_id)
 
-                # Check if this user prompt already exists (Regeneration case)
-                existing_user_msg = next(
-                    (m for m in reversed(existing_messages) if m.get("role") == "user" and m.get("content") == request.idea),
-                    None
-                )
-
-                if existing_user_msg:
-                    # REGENERATION CASE:
-                    # Reuse existing user message as parent_id and increment version
-                    parent_user_id = existing_user_msg.get("message_id")
-                    previous_versions = [
-                        m for m in existing_messages if m.get("parent_id") == parent_user_id
-                    ]
-                    next_version = len(previous_versions) + 1
-                else:
-                    # EDIT OR NEW PROMPT CASE:
-                    # If user edited an earlier message, hide previous superseded messages
-                    if existing_messages:
-                        ids_to_hide = [m["message_id"] for m in existing_messages]
-                        hide_messages_from(thread_id, ids_to_hide)
+                if request.edited_message_id:
+                    # EDIT CASE: Always prioritised — hide the original user message
+                    # and its AI reply, then save the new user message.
+                    # NOTE: This must be checked BEFORE the same-text regeneration
+                    # check below, otherwise editing a message to identical text
+                    # would fall into the regeneration branch and skip hiding,
+                    # causing the old essay to reappear on page reload.
+                    ai_reply = next(
+                        (m for m in existing_messages if m.get("parent_id") == request.edited_message_id),
+                        None
+                    )
+                    ids_to_hide = [request.edited_message_id]
+                    if ai_reply:
+                        ids_to_hide.append(ai_reply["message_id"])
+                    hide_messages_from(thread_id, ids_to_hide)
 
                     # Save new user message
                     user_saved = save_message(
@@ -289,6 +310,40 @@ async def generate_essay(request: EssayRequest):
                     conversation_history.append(
                         HumanMessage(content=request.idea)
                     )
+
+                else:
+                    # Check if this user prompt already exists (Regeneration case)
+                    existing_user_msg = next(
+                        (m for m in reversed(existing_messages) if m.get("role") == "user" and m.get("content") == request.idea),
+                        None
+                    )
+
+                    if existing_user_msg:
+                        # REGENERATION CASE:
+                        # Reuse existing user message as parent_id and increment version
+                        parent_user_id = existing_user_msg.get("message_id")
+                        previous_versions = [
+                            m for m in existing_messages if m.get("parent_id") == parent_user_id
+                        ]
+                        next_version = len(previous_versions) + 1
+                    else:
+                        # NEW MESSAGE CASE
+                        user_saved = save_message(
+                            session_id=thread_id,
+                            role="user",
+                            content=request.idea,
+                            status="visible",
+                            version=1
+                        )
+                        if not user_saved:
+                            raise Exception("Unable to save user message.")
+
+                        parent_user_id = user_saved[0]["message_id"] if user_saved else None
+                        next_version = 1
+
+                        conversation_history.append(
+                            HumanMessage(content=request.idea)
+                        )
 
                 final_state = dict(inputs)
                 any_event_received = False
@@ -327,6 +382,47 @@ async def generate_essay(request: EssayRequest):
 
                 if not assistant_saved:
                     raise Exception("Unable to save assistant response.")
+
+                assistant_msg_id = assistant_saved[0]["message_id"] if assistant_saved else None
+                raw_generated_images = final_state.get("images", [])
+
+                if raw_generated_images and assistant_msg_id:
+                    stored_image_paths = []
+                    updated_images_for_frontend = []
+
+                    for idx, img in enumerate(raw_generated_images):
+                        data_uri = img.get("image", "")
+                        title = img.get("title", "")
+                        caption = img.get("caption", "")
+
+                        if data_uri and data_uri.startswith("data:"):
+                            object_path = upload_image_data_uri(
+                                data_uri=data_uri,
+                                session_id=thread_id,
+                                message_id=assistant_msg_id,
+                                index=idx
+                            )
+                            if object_path:
+                                stored_image_paths.append({
+                                    "path": object_path,
+                                    "title": title,
+                                    "caption": caption
+                                })
+                                public_url = get_accessible_url(object_path)
+                                updated_images_for_frontend.append({
+                                    "title": title,
+                                    "caption": caption,
+                                    "image": public_url
+                                })
+                            else:
+                                updated_images_for_frontend.append(img)
+                        else:
+                            updated_images_for_frontend.append(img)
+
+                    if stored_image_paths:
+                        update_message_image_paths(assistant_msg_id, stored_image_paths)
+
+                    final_state["images"] = updated_images_for_frontend
 
                 timestamp_updated = update_session_timestamp(thread_id)
                 if not timestamp_updated:

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ImageGallery from "./ImageGallery";
 import {
   FiUser,
@@ -38,13 +38,30 @@ function MessageBubble({
   const [isEditing, setIsEditing] = useState(false);
   const [draftText, setDraftText] = useState(text);
 
-  // Active version index (defaults to latest version)
-  const [versionIdx, setVersionIdx] = useState(
-    versions.length > 0 ? versions.length - 1 : 0
-  );
+  // Active version index — starts at 0 (v1) on load/reload.
+  // Automatically jumps to the latest version when regeneration
+  // adds a new version during the current session.
+  const [versionIdx, setVersionIdx] = useState(0);
+  const prevVersionsLengthRef = useRef(versions.length);
+
+  useEffect(() => {
+    if (versions.length > prevVersionsLengthRef.current) {
+      // A new version was appended (regeneration) — show it immediately
+      setVersionIdx(versions.length - 1);
+    }
+    prevVersionsLengthRef.current = versions.length;
+  }, [versions.length]);
 
   // Active text to display based on selected version
-  const currentText = versions.length > 0 ? versions[versionIdx]?.text || text : text;
+  const currentText =
+    versions.length > 0 && versions[versionIdx]
+      ? versions[versionIdx].text
+      : text;
+
+  const currentImages =
+    versions.length > 0 && versions[versionIdx]
+      ? versions[versionIdx].images || []
+      : images;
 
   const copyMessage = async () => {
     await navigator.clipboard.writeText(currentText);
@@ -204,8 +221,8 @@ function MessageBubble({
                 </ReactMarkdown>
               </div>
 
-              {images.length > 0 && (
-                <ImageGallery images={images} />
+              {currentImages.length > 0 && (
+                <ImageGallery images={currentImages} />
               )}
             </>
           )}
