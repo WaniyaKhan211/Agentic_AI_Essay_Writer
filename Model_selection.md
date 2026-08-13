@@ -21,7 +21,7 @@ This document explains the technologies selected for the Agentic AI Essay Writer
 - Excellent reasoning capabilities.
 - Produces high-quality long-form essays.
 - Fast inference on Groq.
-- Large context window.
+- Large context window (128,000 tokens).
 - Supports tool calling.
 - Suitable for multi-step Agentic AI workflows.
 
@@ -79,8 +79,8 @@ Generate AI illustrations related to the generated essay.
 
 # Frontend
 
-## Framework
-**React**
+## Framework & Dependencies
+**React (Vite) & jsPDF**
 
 ### Why?
 - Modern and responsive user interface.
@@ -89,18 +89,11 @@ Generate AI illustrations related to the generated essay.
 - Supports streaming responses.
 - Easy to scale and maintain.
 
-### Planned Features
-- AI Assistant interface
-- Chat history
-- New Chat
-- Streaming essay generation
-- Display generated images after streaming
-
 ---
 
 # Memory System
 
-The project follows a **layered memory architecture**
+The project follows a **layered memory architecture**:
 
 ---
 
@@ -140,17 +133,15 @@ Benefits:
 ## 3. Long-Term Memory
 
 ### Requirement
-
 Persist conversation history and context across sessions.
 
 ### Current Implementation
-
-Supabase (PostgreSQL) — chat_sessions and chat_messages tables
+Supabase (PostgreSQL) — `chat_sessions` and `chat_messages` tables.
 
 ### Purpose
-Persist full conversation history beyond a single session or app restart.
-Allow past chats to be reopened and continued with complete context.
-Store generated images alongside their messages for later retrieval.
+- Persist full conversation history beyond a single session or app restart.
+- Allow past chats to be reopened and continued with complete context.
+- Store generated images alongside their messages for later retrieval.
 
 ---
 
@@ -162,7 +153,7 @@ Store generated images alongside their messages for later retrieval.
 | LLM | openai/gpt-oss-120b (Groq) |
 | Web Search | Exa Search API |
 | Image Generation | FLUX.1-schnell (Hugging Face) |
-| Frontend | React |
+| Frontend | React + Vite + jsPDF |
 | Short-Term Memory | LangGraph Checkpointer |
 | Mid-Term Memory | LLM Summarization Middleware |
 | Long-Term Memory | Supabase (PostgreSQL) |
@@ -172,7 +163,6 @@ Store generated images alongside their messages for later retrieval.
 # Selection Criteria
 
 The selected technologies were chosen based on:
-
 - High-quality essay generation
 - Strong reasoning capability
 - Fast inference

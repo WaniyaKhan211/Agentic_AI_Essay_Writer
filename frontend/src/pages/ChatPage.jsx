@@ -69,7 +69,8 @@ function ChatPage() {
     aiMessageId,
     parentUserId = null,
     isRegeneration = false,
-    editedMessageId = null
+    editedMessageId = null,
+    option = "both"
   ) => {
     const controller = new AbortController();
     streamRef.current = { conversationId, aiMessageId, controller };
@@ -282,7 +283,8 @@ function ChatPage() {
         },
         controller.signal,
         conversationId,
-        editedMessageId
+        editedMessageId,
+        option
       );
 
       // Mark message as no longer streaming
@@ -491,7 +493,7 @@ function ChatPage() {
   };
 
   // Called when user clicks "regenerate" on an AI message
-  const regenerateMessage = (aiMessageId) => {
+  const regenerateMessage = (aiMessageId, option = "both") => {
     const conversationId = currentConversation;
     const chat = conversations.find((c) => c.id === conversationId);
     if (!chat) return;
@@ -509,7 +511,7 @@ function ChatPage() {
     abortActiveStream(conversationId);
 
     const newAiMessageId = generateId();
-    streamAIResponse(conversationId, promptText, newAiMessageId, parentUserId, true);
+    streamAIResponse(conversationId, promptText, newAiMessageId, parentUserId, true, null, option);
   };
 
   const setMessageFeedback = (messageId, type) => {

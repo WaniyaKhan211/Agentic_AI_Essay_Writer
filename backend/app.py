@@ -345,30 +345,65 @@ async def generate_essay(request: EssayRequest):
                             HumanMessage(content=request.idea)
                         )
 
+                regen_opt = request.regenerate_option or "both"
                 final_state = dict(inputs)
-                any_event_received = False
 
-                for event in essay_graph.stream(
-                    inputs,
-                    config=config,
-                    stream_mode="updates"
-                ):
-                    for node_name, state in event.items():
-                        status = build_status_message(node_name, state)
-                        if status:
-                            q.put(("status", status))
+                if regen_opt == "images":
+                    # --- IMAGES ONLY REGENERATION ---
+                    q.put(("status", "Generating new images for existing essay..."))
+                    assistant_text = previous_essay or ""
 
-                        final_state.update(state)
-                        any_event_received = True
+                    essay_data = {
+                        "title": request.idea,
+                        "sections": [{"subheading": "Essay", "content": assistant_text}],
+                    }
 
-                if not any_event_received:
-                    raise Exception("Graph returned no result.")
+                    try:
+                        from nodes.image_generator import generate_images
+                        raw_generated_images = generate_images(topic=request.idea, essay_data=essay_data)
+                    except Exception as e:
+                        print("Failed to generate new images:", e)
+                        raw_generated_images = []
 
-                assistant_text = (
-                    final_state["response"]
-                    if not final_state["is_valid"]
-                    else final_state["best_essay"]
-                )
+                    final_state["is_valid"] = True
+                    final_state["response"] = assistant_text
+                    final_state["best_essay"] = assistant_text
+                    final_state["images"] = raw_generated_images
+
+                else:
+                    # --- ESSAY ONLY OR BOTH ---
+                    any_event_received = False
+
+                    for event in essay_graph.stream(
+                        inputs,
+                        config=config,
+                        stream_mode="updates"
+                    ):
+                        for node_name, state in event.items():
+                            status = build_status_message(node_name, state)
+                            if status:
+                                q.put(("status", status))
+
+                            final_state.update(state)
+                            any_event_received = True
+
+                    if not any_event_received:
+                        raise Exception("Graph returned no result.")
+
+                    assistant_text = (
+                        final_state["response"]
+                        if not final_state["is_valid"]
+                        else final_state["best_essay"]
+                    )
+
+                    if regen_opt == "essay":
+                        # For ESSAY ONLY: keep previous images instead of generating new ones
+                        prev_ai_msg = next(
+                            (m for m in reversed(existing_messages) if m.get("role") == "assistant"),
+                            None
+                        )
+                        existing_paths = prev_ai_msg.get("image_paths", []) if prev_ai_msg else []
+                        final_state["images"] = existing_paths
 
                 # Save assistant response with parent_id and incremented version
                 assistant_saved = save_message(
@@ -391,9 +426,20 @@ async def generate_essay(request: EssayRequest):
                     updated_images_for_frontend = []
 
                     for idx, img in enumerate(raw_generated_images):
-                        data_uri = img.get("image", "")
-                        title = img.get("title", "")
-                        caption = img.get("caption", "")
+                        if isinstance(img, dict) and "path" in img:
+                            # Existing stored image path (for essay-only case)
+                            stored_image_paths.append(img)
+                            public_url = get_accessible_url(img["path"])
+                            updated_images_for_frontend.append({
+                                "title": img.get("title", ""),
+                                "caption": img.get("caption", ""),
+                                "image": public_url
+                            })
+                            continue
+
+                        data_uri = img.get("image", "") if isinstance(img, dict) else ""
+                        title = img.get("title", "") if isinstance(img, dict) else ""
+                        caption = img.get("caption", "") if isinstance(img, dict) else ""
 
                         if data_uri and data_uri.startswith("data:"):
                             object_path = upload_image_data_uri(

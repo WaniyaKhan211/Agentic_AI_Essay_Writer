@@ -26,7 +26,7 @@ export async function getSessionMessages(sessionId) {
     }
     return await response.json();
 }
-export async function generateEssayStream(idea, callbacks, signal, conversationId, editedMessageId = null) {
+export async function generateEssayStream(idea, callbacks, signal, conversationId, editedMessageId = null, option = "both") {
 
   const {
     onChunk,
@@ -47,6 +47,7 @@ export async function generateEssayStream(idea, callbacks, signal, conversationI
         idea: idea,
         conversation_id: conversationId != null ? String(conversationId) : null,
         edited_message_id: editedMessageId != null ? String(editedMessageId) : null,
+        regenerate_option: option,
       }),
       signal,
     }

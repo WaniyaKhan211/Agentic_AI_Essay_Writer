@@ -60,7 +60,15 @@
     box-shadow:0 2px 8px rgba(0,0,0,.05);
 
     white-space:normal;
-    overflow-wrap:anywhere;
+    /* overflow-wrap: anywhere allows a break between ANY two characters.
+       Combined with `text-align: justify` on paragraphs (see markdown.css),
+       that lets the browser stretch justified space at every one of those
+       character-level break points - not just real word gaps - which is
+       what caused individual letters to spread apart with huge gaps on
+       narrow/mobile widths. break-word only breaks when a whole word
+       genuinely doesn't fit, so it can't trigger that. */
+    overflow-wrap:break-word;
+    word-break:normal;
 }
 
 .message.ai .bubble{
@@ -281,6 +289,22 @@
 .feedback-btn.active{
     color:#8a5cb8;
     background:#f3e8fb;
+}
+
+/* ---------- Download (PDF) ---------- */
+
+.download-btn:disabled{
+    cursor:default;
+    opacity:.6;
+}
+
+.spin-icon{
+    animation: spin .9s linear infinite;
+}
+
+@keyframes spin{
+    from{ transform:rotate(0deg); }
+    to{ transform:rotate(360deg); }
 }
 
 /* ---------- Copy Tooltip ---------- */
@@ -559,4 +583,60 @@
 
 .version-pagination button:not(:disabled):hover {
   color: #ececf1;
+}
+
+/* ---------- Regenerate Dropdown Menu ---------- */
+
+.regen-dropdown-container {
+  position: relative;
+  display: inline-flex;
+}
+
+.regen-btn.active {
+  color: #8a5cb8;
+  background: #f3e8fb;
+}
+
+.regen-dropdown-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 6px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 999;
+  min-width: 240px;
+}
+
+.regen-dropdown-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #334155;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  text-align: left;
+  width: 100%;
+}
+
+.regen-dropdown-menu button:hover {
+  background: #f1f5f9;
+  color: #8a5cb8;
+}
+
+.regen-dropdown-menu button span {
+  font-size: 14px;
 }

@@ -95,12 +95,26 @@
 .markdown-body table {
 
     width: 100%;
+    min-width: 480px;
     border-collapse: collapse;
 
     margin: 8px 0;
 
-    overflow: hidden;
     border-radius: 8px;
+}
+
+/* Tables are wrapped in this scroll container (see MessageBubble.jsx) so
+   that on narrow/mobile widths the columns get horizontal scroll instead
+   of being crushed down to a character or two per line - which is what
+   forced overflow-wrap to break mid-word and, combined with justify,
+   produced the letter-spread glitch. */
+.markdown-body .table-scroll {
+    overflow-x: auto;
+    margin: 8px 0;
+    border-radius: 8px;
+}
+.markdown-body .table-scroll table {
+    margin: 0;
 }
 
 .markdown-body th,
@@ -109,6 +123,11 @@
     border: 1px solid #ddd;
 
     padding: 8px 10px;
+
+    text-align: left;
+    overflow-wrap: break-word;
+    word-break: normal;
+    white-space: normal;
 }
 
 .markdown-body th {

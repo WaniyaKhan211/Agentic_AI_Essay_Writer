@@ -69,7 +69,7 @@ const ChatWindow = forwardRef(function ChatWindow({
           liked={!!message.liked}
           disliked={!!message.disliked}
           onEdit={onEditMessage}
-          onRegenerate={onRegenerateMessage}
+          onRegenerate={(id, option) => onRegenerateMessage?.(id, option)}
           onFeedback={onFeedback}
         />
       ))}

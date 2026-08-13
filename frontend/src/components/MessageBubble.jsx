@@ -11,6 +11,8 @@ import {
   FiX,
   FiChevronLeft,
   FiChevronRight,
+  FiDownload,
+  FiLoader,
 } from "react-icons/fi";
 import { FaThumbsUp, FaThumbsDown } from "react-icons/fa";
 import "../styles/markdown.css";
@@ -19,6 +21,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import rehypeHighlight from "rehype-highlight";
+import { exportEssayToPDF } from "../utils/pdfExport";
 
 function MessageBubble({
   id,
@@ -35,6 +38,7 @@ function MessageBubble({
 }) {
   const [copied, setCopied] = useState(false);
   const [showSources, setShowSources] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [draftText, setDraftText] = useState(text);
 
@@ -43,6 +47,24 @@ function MessageBubble({
   // adds a new version during the current session.
   const [versionIdx, setVersionIdx] = useState(0);
   const prevVersionsLengthRef = useRef(versions.length);
+
+  const [showRegenMenu, setShowRegenMenu] = useState(false);
+  const regenMenuRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (regenMenuRef.current && !regenMenuRef.current.contains(event.target)) {
+        setShowRegenMenu(false);
+      }
+    };
+
+    if (showRegenMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showRegenMenu]);
 
   useEffect(() => {
     if (versions.length > prevVersionsLengthRef.current) {
@@ -71,6 +93,27 @@ function MessageBubble({
     setTimeout(() => {
       setCopied(false);
     }, 2000);
+  };
+
+  const downloadPDF = async () => {
+    if (isDownloading) return;
+    setIsDownloading(true);
+
+    try {
+      // Use the first markdown heading (or first line) as the essay title.
+      const firstLine = (cleanedText || "").split("\n").find((l) => l.trim());
+      const title = firstLine?.replace(/^#{1,6}\s*/, "").slice(0, 100) || "Essay";
+
+      await exportEssayToPDF({
+        title,
+        markdown: cleanedText,
+        images: currentImages,
+      });
+    } catch (err) {
+      console.error("Failed to export PDF:", err);
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   const startEditing = () => {
@@ -155,6 +198,16 @@ function MessageBubble({
     );
   };
 
+  // Wrap tables in a horizontally-scrollable container so narrow/mobile
+  // widths scroll instead of crushing columns down to a character or two
+  // per line (see the .table-scroll rule in markdown.css for why that
+  // crushing was causing garbled, letter-spaced text).
+  const TableRenderer = ({ children, ...props }) => (
+    <div className="table-scroll">
+      <table {...props}>{children}</table>
+    </div>
+  );
+
   const visibleSources = sources.slice(0, 3);
   const extraSourcesCount = sources.length - visibleSources.length;
 
@@ -215,6 +268,7 @@ function MessageBubble({
                   rehypePlugins={[rehypeKatex, rehypeHighlight]}
                   components={{
                     a: LinkRenderer,
+                    table: TableRenderer,
                   }}
                 >
                   {cleanedText}
@@ -368,9 +422,59 @@ function MessageBubble({
             ) : (
               <>
                 {!isStreaming && (
-                  <button onClick={() => onRegenerate?.(id)} title="Regenerate response">
-                    <FiRefreshCw size={16} />
+                  <button
+                    className="download-btn"
+                    onClick={downloadPDF}
+                    disabled={isDownloading}
+                    title="Download as PDF"
+                  >
+                    {isDownloading ? (
+                      <FiLoader size={16} className="spin-icon" />
+                    ) : (
+                      <FiDownload size={16} />
+                    )}
                   </button>
+                )}
+
+                {!isStreaming && (
+                  <div className="regen-dropdown-container" ref={regenMenuRef}>
+                    <button
+                      onClick={() => setShowRegenMenu((prev) => !prev)}
+                      title="Regenerate options"
+                      className={showRegenMenu ? "regen-btn active" : "regen-btn"}
+                    >
+                      <FiRefreshCw size={16} />
+                    </button>
+
+                    {showRegenMenu && (
+                      <div className="regen-dropdown-menu">
+                        <button
+                          onClick={() => {
+                            setShowRegenMenu(false);
+                            onRegenerate?.(id, "both");
+                          }}
+                        >
+                          <span>🔄</span> Regenerate Both
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowRegenMenu(false);
+                            onRegenerate?.(id, "essay");
+                          }}
+                        >
+                          <span>📝</span> Regenerate Essay
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowRegenMenu(false);
+                            onRegenerate?.(id, "images");
+                          }}
+                        >
+                          <span>🖼️</span> Regenerate Images
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
 
                 <button
