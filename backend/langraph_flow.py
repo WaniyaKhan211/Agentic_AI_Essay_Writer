@@ -7,7 +7,7 @@ from nodes.graph import (
     research_node,
     writer_node,
     judge_node,
-    image_node  # Keep the import; it's just not used for now
+    image_node  
 )
 
 from nodes.validator import validator_node
