@@ -1,20 +1,3 @@
-// pdfExport.js
-//
-// Turns an AI essay message (markdown text + generated images) into a
-// clean, paginated PDF using jsPDF.
-//
-// Why not just html2canvas the bubble? Screenshotting the chat bubble
-// produces a blurry, non-selectable, oddly-cropped PDF and images loaded
-// from a remote URL (Supabase storage) often get clipped mid-page.
-// Instead we:
-//   1. Parse the markdown ourselves (headings, bold/italic, lists) and
-//      lay the text out with real word-wrapping + pagination.
-//   2. Fetch each image, decode its real pixel size, scale it to fit the
-//      page width/height, and always start a new page BEFORE an image if
-//      it can't fit fully on the current one (so it never gets cut in half).
-//
-// Install once in /frontend:  npm install jspdf
-
 import { jsPDF } from "jspdf";
 
 // ---------- Page geometry (points) ----------
@@ -35,15 +18,65 @@ const IMAGE_CAPTION_GAP = 12;
 
 // ---------- Small helpers ----------
 
+const SUBSCRIPT_DIGIT_MAP = { "\u2080":"0","\u2081":"1","\u2082":"2","\u2083":"3","\u2084":"4","\u2085":"5","\u2086":"6","\u2087":"7","\u2088":"8","\u2089":"9","\u208a":"+","\u208b":"-","\u208c":"=","\u208d":"(","\u208e":")" };
+const SUPERSCRIPT_DIGIT_MAP = { "\u2070":"0","\u00b9":"1","\u00b2":"2","\u00b3":"3","\u2074":"4","\u2075":"5","\u2076":"6","\u2077":"7","\u2078":"8","\u2079":"9","\u207a":"+","\u207b":"-","\u207c":"=","\u207d":"(","\u207e":")","\u207f":"n" };
+const SUBSCRIPT_LETTER_MAP = { "\u2090":"a","\u2091":"e","\u2095":"h","\u1d62":"i","\u2c7c":"j","\u2096":"k","\u2097":"l","\u2098":"m","\u2099":"n","\u2092":"o","\u209a":"p","\u1d63":"r","\u209b":"s","\u209c":"t","\u1d64":"u","\u1d65":"v","\u2093":"x" };
+const GREEK_WORD_MAP = {
+  "\u03b1":"alpha","\u03b2":"beta","\u03b3":"gamma","\u0393":"Gamma","\u03b4":"delta","\u0394":"Delta",
+  "\u03b5":"epsilon","\u03b6":"zeta","\u03b7":"eta","\u03b8":"theta","\u0398":"Theta","\u03b9":"iota",
+  "\u03ba":"kappa","\u03bb":"lambda","\u039b":"Lambda","\u03bc":"mu","\u03bd":"nu","\u03be":"xi",
+  "\u03c0":"pi","\u03a0":"Pi","\u03c1":"rho","\u03c3":"sigma","\u03a3":"Sigma","\u03c4":"tau",
+  "\u03c5":"upsilon","\u03c6":"phi","\u03a6":"Phi","\u03c7":"chi","\u03c8":"psi","\u03a8":"Psi",
+  "\u03c9":"omega","\u03a9":"Omega",
+};
+const MATH_SYMBOL_WORD_MAP = {
+  "\u2192":"->", "\u21d2":"=>", "\u2190":"<-", "\u21d0":"<=", "\u2194":"<->", "\u21d4":"<=>",
+  "\u21cc":"<=>", "\u2260":"!=", "\u2265":">=", "\u2264":"<=", "\u2248":"~", "\u2261":"==",
+  "\u221e":"infinity", "\u2202":"d", "\u2207":"grad", "\u221d":"proportional to",
+  "\u2211":"sum", "\u222b":"integral", "\u220f":"product", "\u221a":"sqrt",
+};
+
+/** Replace a Unicode character outside jsPDF's supported font range with a
+ * safe ASCII/Latin-1 equivalent, falling back to dropping it if unknown. */
+function unicodeCharToSafeText(ch) {
+  if (SUBSCRIPT_DIGIT_MAP[ch]) return SUBSCRIPT_DIGIT_MAP[ch];
+  if (SUPERSCRIPT_DIGIT_MAP[ch]) return SUPERSCRIPT_DIGIT_MAP[ch];
+  if (SUBSCRIPT_LETTER_MAP[ch]) return SUBSCRIPT_LETTER_MAP[ch];
+  if (GREEK_WORD_MAP[ch]) return GREEK_WORD_MAP[ch];
+  if (MATH_SYMBOL_WORD_MAP[ch]) return MATH_SYMBOL_WORD_MAP[ch];
+  const code = ch.codePointAt(0);
+  // ASCII and Latin-1 Supplement (the range jsPDF's base fonts actually
+  // support) pass through untouched.
+  if (code <= 0xff) return ch;
+  // Anything else unrecognized (rare symbols, emoji, etc.) - drop rather
+  // than let it render as a broken/wrong glyph.
+  return "";
+}
+
+/** Normalize any character outside the PDF font's supported range across a
+ * whole string (title, body text, captions - anywhere text ends up on the page). */
+function sanitizeForPdfFont(text) {
+  if (!text) return "";
+  let out = "";
+  for (const ch of text) {
+    out += ch.codePointAt(0) > 0x7e ? unicodeCharToSafeText(ch) : ch;
+  }
+  return out;
+}
+
 function cleanSpecialCharacters(text) {
   if (!text) return "";
-  return text
+  const normalized = text
     .replace(/[\u201c\u201d\u201f\u2033\u2036]/g, '"') // Curly double quotes
     .replace(/[\u2018\u2019\u201b\u2032\u2035]/g, "'") // Curly single quotes / apostrophes
     .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212\u00ad]/g, "-") // Hyphens and dashes
     .replace(/[\u200b\u200c\u200d\ufeff]/g, "")        // Zero-width characters
     .replace(/\u2026/g, "...")                        // Ellipses
     .replace(/\u00a0/g, " ");                         // Non-breaking spaces
+  // Anything left that the PDF's base fonts can't render (stray Unicode
+  // subscripts/superscripts, Greek letters, arrows, math operators typed
+  // directly into prose) gets converted to a safe plain-text equivalent.
+  return sanitizeForPdfFont(normalized);
 }
 
 function groupLineIntoRuns(line) {
@@ -75,6 +108,143 @@ function groupLineIntoRuns(line) {
     runs.push(currentRun);
   }
   return runs;
+}
+
+// ---------- LaTeX -> readable plain text ----------
+//
+// The essay backend emits real LaTeX ($$...$$ display blocks and $...$
+// inline math, sometimes with \frac, \vec, \boldsymbol, \xrightarrow,
+// subscripts, etc). jsPDF can't render LaTeX (and its base fonts can't
+// render most non-Latin-1 Unicode either - see sanitizeForPdfFont above),
+// so we convert math source into clean, ASCII-safe plain text instead
+// (e.g. "\frac{d\vec{p}}{dt}=0" -> "(d(p))/(dt) = 0").
+const GREEK_NAME_FIX = {
+  // A handful of "var*" LaTeX variants that should map to the same plain
+  // name as their base letter, rather than being left as "varepsilon" etc.
+  varepsilon: "epsilon", varphi: "phi", varrho: "rho", vartheta: "theta", varsigma: "sigma",
+};
+
+/** Convert a snippet of LaTeX math source into readable plain text. */
+function latexToPlainText(raw) {
+  let t = raw;
+
+  // Brace-sensitive commands can nest arbitrarily (e.g.
+  // \boldsymbol{\vec{F}_{AB}} or \frac{d\vec{p}}{dt}), and each individual
+  // regex below only matches a brace group with no braces inside it. So
+  // resolve inside-out: repeat the whole set of passes until nothing
+  // changes, which lets an inner \vec{p} get simplified first, which then
+  // exposes the outer \frac{...}{...} on the next pass, and so on.
+  for (let pass = 0; pass < 10; pass++) {
+    const before = t;
+    t = t.replace(/\\d?frac\{([^{}]*)\}\{([^{}]*)\}/g, "($1)/($2)");
+    t = t.replace(/\\sqrt\{([^{}]*)\}/g, "sqrt($1)");
+    // Reaction/limit-style arrows with an over/under label, e.g.
+    // \xrightarrow{light} or \xrightarrow[catalyst]{light}.
+    t = t.replace(/\\xrightarrow(?:\[[^[\]]*\])?\{([^{}]*)\}/g, " -> ($1) ");
+    t = t.replace(/\\xleftarrow(?:\[[^[\]]*\])?\{([^{}]*)\}/g, " <- ($1) ");
+    // Styling/decoration commands that just carry their argument through.
+    t = t.replace(/\\(?:boldsymbol|mathbf|mathrm|mathit|mathcal|text|operatorname|vec|hat|bar|dot|ddot|overline|underline|widehat|widetilde)\s*\{([^{}]*)\}/g, "$1");
+    // Subscript/superscript braces (e.g. F_{AB}) also block the regexes
+    // above from seeing past them, so unwrap those braces here too and
+    // let the loop re-check everything on the next pass.
+    t = t.replace(/_\{([^{}]*)\}/g, "_$1");
+    t = t.replace(/\^\{([^{}]*)\}/g, "^$1");
+    // Generic fallback for any other single-argument brace command we
+    // don't explicitly know about (e.g. \underbrace{x}) - drop the command
+    // name and keep its argument, which is safer than leaving a stray
+    // command name glued to whatever text follows.
+    t = t.replace(/\\[a-zA-Z]+\{([^{}]*)\}/g, "$1");
+    if (t === before) break;
+  }
+
+  // No-argument arrow variants.
+  t = t.replace(/\\xrightarrow(?!\{|\[)/g, " -> ");
+  t = t.replace(/\\xleftarrow(?!\{|\[)/g, " <- ");
+
+  // Spacing / grouping commands.
+  t = t.replace(/\\left|\\right|\\big[glmr]?|\\Big[glmr]?/g, "");
+  t = t.replace(/\\quad|\\qquad/g, "   ");
+  t = t.replace(/\\[,:;!]/g, " ");
+
+  // Common math operators/symbols. Only Latin-1 characters (safely
+  // renderable by jsPDF's base fonts) use their real symbol; everything
+  // else uses a plain ASCII stand-in - see sanitizeForPdfFont's comment
+  // for why arrows/Greek/operators can't just be dropped in as Unicode.
+  const SYMBOLS = {
+    "\\times": "\u00d7", "\\cdot": "\u00b7", "\\pm": "\u00b1", "\\mp": "-/+",
+    "\\div": "\u00f7", "\\degree": "\u00b0", "\\circ": "\u00b0",
+    "\\neq": "!=", "\\geq": ">=", "\\ge": ">=", "\\leq": "<=", "\\le": "<=",
+    "\\approx": "~", "\\equiv": "==", "\\infty": "infinity",
+    "\\partial": "d", "\\nabla": "grad ", "\\propto": "proportional to",
+    "\\sum": "sum", "\\int": "integral", "\\prod": "product",
+    "\\rightarrow": " -> ", "\\to": " -> ", "\\Rightarrow": " => ",
+    "\\longrightarrow": " -> ", "\\Longrightarrow": " => ",
+    "\\leftarrow": " <- ", "\\Leftarrow": " <= ",
+    "\\longleftarrow": " <- ", "\\leftrightarrow": " <-> ",
+    "\\Leftrightarrow": " <=> ", "\\rightleftharpoons": " <=> ",
+    // \arrow isn't standard LaTeX, but the essay backend sometimes emits
+    // it as a plain reaction arrow - treat it the same as \rightarrow.
+    "\\arrow": " -> ",
+  };
+  for (const [cmd, sym] of Object.entries(SYMBOLS)) {
+    t = t.split(cmd).join(sym);
+  }
+
+  // Any remaining \word (Greek letters, \sin, \lim, unrecognized commands,
+  // etc.) - drop the backslash and keep the plain-text name, normalizing
+  // the handful of "var*" Greek variants to their base name.
+  t = t.replace(/\\([a-zA-Z]+)/g, (m, name) => GREEK_NAME_FIX[name] || name);
+
+  // Cleanup: stray braces/backslashes and whitespace.
+  t = t.replace(/[{}]/g, "");
+  t = t.replace(/\\/g, "");
+  t = t.replace(/\s+/g, " ").trim();
+
+  return t;
+}
+
+const FORMULA_PLACEHOLDER_RE = /^@@FORMULA_BLOCK_(\d+)@@$/;
+
+/**
+ * Convert every LaTeX math span in the raw markdown into plain text before
+ * any line-based markdown parsing happens.
+ *
+ * Display equations ($$...$$) are matched with a DOTALL-style regex across
+ * the whole string - NOT line-by-line - because the backend sometimes
+ * emits the opening "$$" mid-sentence (e.g. "constant mass: $$\n...\n$$"),
+ * which a line-start check would miss entirely and misparse. Each display
+ * equation is pulled out, converted, and swapped for a standalone
+ * placeholder line so the block-level parser can pick it up cleanly as its
+ * own centered formula block.
+ *
+ * Inline math ($...$) is converted in place, directly into the surrounding
+ * paragraph/list/table text, so no literal "$" or LaTeX commands ever
+ * reach the page.
+ */
+function preprocessMath(markdown) {
+  const displayFormulas = [];
+  if (!markdown) return { text: "", displayFormulas };
+
+  let text = markdown.replace(/\$\$([\s\S]*?)\$\$/g, (_, expr) => {
+    const plain = latexToPlainText(expr);
+    if (!plain) return "";
+    const idx = displayFormulas.length;
+    displayFormulas.push(plain);
+    return `\n\n@@FORMULA_BLOCK_${idx}@@\n\n`;
+  });
+
+  // Whatever "$...$" pairs remain are inline math (display pairs were
+  // already consumed above), so convert them to plain text in place.
+  text = text.replace(/\$([^$\n]+?)\$/g, (_, expr) => {
+    const plain = latexToPlainText(expr);
+    if (!plain) return "";
+    if (/\\(boldsymbol|mathbf)/.test(expr)) {
+      return `**${plain}**`;
+    }
+    return plain;
+  });
+
+  return { text, displayFormulas };
 }
 
 function sanitizeFileName(name) {
@@ -130,7 +300,7 @@ function stripUnsupportedMarkdown(text) {
 }
 
 /** Split a markdown string into block-level tokens. */
-function parseMarkdownBlocks(markdown) {
+function parseMarkdownBlocks(markdown, displayFormulas = []) {
   const lines = stripUnsupportedMarkdown(markdown).replace(/\r\n/g, "\n").split("\n");
   const blocks = [];
   let paragraphBuffer = [];
@@ -168,27 +338,16 @@ function parseMarkdownBlocks(markdown) {
       continue;
     }
 
-    // Formula block: $$ ... $$ either on one line or spanning several.
-    if (line.trim().startsWith("$$")) {
+    // Formula block placeholder, dropped in by preprocessMath() for every
+    // $$...$$ display equation found anywhere in the raw markdown (see
+    // preprocessMath for why this can't be a simple line-start check).
+    const formulaMatch = line.trim().match(FORMULA_PLACEHOLDER_RE);
+    if (formulaMatch) {
       flushParagraph();
       flushList();
-      let formulaLines = [line.trim().replace(/^\$\$/, "")];
-      let closed = formulaLines[0].endsWith("$$");
-      if (closed) formulaLines[0] = formulaLines[0].replace(/\$\$$/, "");
-      i++;
-      while (!closed && i < lines.length) {
-        const l = lines[i];
-        if (l.trim().endsWith("$$")) {
-          formulaLines.push(l.trim().replace(/\$\$$/, ""));
-          closed = true;
-          i++;
-          break;
-        }
-        formulaLines.push(l.trim());
-        i++;
-      }
-      const formulaText = formulaLines.join(" ").trim();
+      const formulaText = displayFormulas[Number(formulaMatch[1])];
       if (formulaText) blocks.push({ type: "formula", text: formulaText });
+      i++;
       continue;
     }
 
@@ -462,18 +621,12 @@ function writeQuote(doc, cursor, text) {
   doc.line(MARGIN + 2, startY - fontSize, MARGIN + 2, cursor.y - 6);
 }
 
-/** Turn simple LaTeX ($$...$$) into readable plain text and draw it centered. */
+/** Draw an already-converted (plain text) display formula, centered. */
 function writeFormula(doc, cursor, rawText) {
-  const text = rawText
-    .replace(/\\boldsymbol\{([^}]*)\}/g, "$1")
-    .replace(/\\times/g, "\u00d7")
-    .replace(/\\cdot/g, "\u00b7")
-    .replace(/\\quad/g, "   ")
-    .replace(/\\[,;]/g, " ")
-    .replace(/[{}]/g, "")
-    .replace(/\\/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  // rawText has already been through latexToPlainText() via preprocessMath(),
+  // so this is just a defensive re-clean in case writeFormula is ever called
+  // directly with raw LaTeX from elsewhere.
+  const text = /[\\{}$]/.test(rawText) ? latexToPlainText(rawText) : rawText.trim();
 
   if (!text) return;
 
@@ -482,7 +635,7 @@ function writeFormula(doc, cursor, rawText) {
   cursor.ensureSpace(lineHeight + 16);
   cursor.y += 6;
 
-  doc.setFont("courier", "normal");
+  doc.setFont("courier", "bold");
   doc.setFontSize(fontSize);
   doc.setTextColor("#1f2023");
   const wrapped = doc.splitTextToSize(text, CONTENT_WIDTH * 0.85);
@@ -573,7 +726,8 @@ function writeTable(doc, cursor, header, rows) {
 }
 
 function writeMarkdownBody(doc, cursor, markdown) {
-  const blocks = parseMarkdownBlocks(markdown);
+  const { text, displayFormulas } = preprocessMath(markdown);
+  const blocks = parseMarkdownBlocks(text, displayFormulas);
   for (const block of blocks) {
     if (block.type === "heading") writeHeading(doc, cursor, block.text, block.level);
     else if (block.type === "list") writeList(doc, cursor, block);

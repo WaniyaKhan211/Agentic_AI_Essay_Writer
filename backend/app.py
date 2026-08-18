@@ -364,9 +364,29 @@ async def generate_essay(request: EssayRequest):
                     q.put(("status", "Generating new images for existing essay..."))
                     assistant_text = previous_essay or ""
 
+                    parsed_sections = []
+                    if assistant_text:
+                        raw_sections = re.split(r"\n(?=#{1,3}\s+)", assistant_text.strip())
+                        for sec in raw_sections:
+                            sec_str = sec.strip()
+                            if not sec_str:
+                                continue
+                            lines = sec_str.split("\n", 1)
+                            if lines[0].startswith("#"):
+                                heading = lines[0].lstrip("#").strip()
+                                body = lines[1].strip() if len(lines) > 1 else ""
+                            else:
+                                heading = "Essay"
+                                body = sec_str
+                            if body:
+                                parsed_sections.append({"heading": heading, "body": body})
+
+                    if not parsed_sections:
+                        parsed_sections = [{"heading": "Essay", "body": assistant_text}]
+
                     essay_data = {
                         "title": request.idea,
-                        "sections": [{"subheading": "Essay", "content": assistant_text}],
+                        "sections": parsed_sections,
                     }
 
                     try:

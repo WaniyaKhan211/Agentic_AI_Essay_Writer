@@ -57,8 +57,8 @@ def _flatten_sentences(essay_data: dict) -> list[dict]:
    
     units = []
     for section in essay_data.get("sections", []):
-        heading = section.get("heading", "Section")
-        body = section.get("body", "") or ""
+        heading = section.get("heading") or section.get("subheading") or "Section"
+        body = section.get("body") or section.get("content") or ""
         # crude sentence split; keeps markdown (e.g. **bold**) intact so
         # key-concept extraction still works per chunk later
         sentences = re.split(r"(?<=[.!?])\s+", body.strip())
